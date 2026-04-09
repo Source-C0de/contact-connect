@@ -89,11 +89,11 @@ export default function LoginPage() {
             )}
           </Button>
 
-          <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground space-y-1">
+          {/* <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground space-y-1">
             <p className="font-medium">Demo Accounts:</p>
             <p>Admin: admin@corp.com / admin123</p>
             <p>User: user@corp.com / user123</p>
-          </div>
+          </div> */}
         </form>
       </div>
     </div>
