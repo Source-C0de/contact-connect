@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { employeeService } from '@/services/employeeService';
-import type { Employee } from '@/data/mockData';
+import { departmentService } from '@/services/departmentService';
+import type { Employee, Department } from '@/data/mockData';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,8 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { AvatarInitials } from '@/components/AvatarInitials';
 import { toast } from 'sonner';
-
-const departments = ['Engineering', 'Sales', 'HR', 'Finance', 'IT', 'Operations'];
 
 interface FormData {
   fullName: string;
@@ -35,16 +34,22 @@ export default function EmployeeForm() {
     extension: '', mobile: '', location: '', status: 'active',
   });
 
+  const [departments, setDepartments] = useState<Department[]>([]);
+
   useEffect(() => {
-    if (id) {
-      employeeService.getById(id).then(emp => {
-        if (emp) setForm({
-          fullName: emp.fullName, jobTitle: emp.jobTitle, department: emp.department,
-          email: emp.email, extension: emp.extension, mobile: emp.mobile,
-          location: emp.location, status: emp.status,
+    departmentService.getAll().then(deps => {
+      setDepartments(deps);
+      if (id) {
+        employeeService.getById(id).then(emp => {
+          const deptId = deps.find(d => d.name === emp.department)?.id || '';
+          if (emp) setForm({
+            fullName: emp.fullName, jobTitle: emp.jobTitle, department: deptId,
+            email: emp.email, extension: emp.extension, mobile: emp.mobile,
+            location: emp.location, status: emp.status,
+          });
         });
-      });
-    }
+      }
+    });
   }, [id]);
 
   const validate = (): boolean => {
@@ -55,7 +60,7 @@ export default function EmployeeForm() {
     if (!form.email.trim()) errs.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Invalid email format';
     if (!form.extension.trim()) errs.extension = 'Extension is required';
-    else if (!/^\d{4}$/.test(form.extension)) errs.extension = 'Must be 4 digits';
+    else if (!/^\d{3,4}$/.test(form.extension)) errs.extension = 'Must be 3 or 4 digits';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -66,10 +71,27 @@ export default function EmployeeForm() {
     setLoading(true);
     try {
       if (isEdit && id) {
-        await employeeService.update(id, form);
+        await employeeService.update(id, {
+          fullName: form.fullName,
+          jobTitle: form.jobTitle,
+          email: form.email,
+          extension: form.extension,
+          mobile: form.mobile,
+          location: form.location,
+          status: form.status,
+          department_id: form.department,
+        } as any);
         toast.success('Employee updated');
       } else {
-        await employeeService.create({ ...form, onlineStatus: 'offline' });
+        await employeeService.create({
+          full_name: form.fullName,
+          job_title: form.jobTitle,
+          department_id: form.department,
+          work_email: form.email,
+          extension: form.extension,
+          mobile: form.mobile || undefined,
+          office_location: form.location || undefined,
+        });
         toast.success('Employee created');
       }
       navigate('/admin/directory');
@@ -118,7 +140,7 @@ export default function EmployeeForm() {
             <Select value={form.department} onValueChange={v => updateField('department', v)}>
               <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
               <SelectContent>
-                {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
               </SelectContent>
             </Select>
             {errors.department && <p className="text-xs text-destructive">{errors.department}</p>}
@@ -130,7 +152,7 @@ export default function EmployeeForm() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="extension">UCM Extension *</Label>
-            <Input id="extension" value={form.extension} onChange={e => updateField('extension', e.target.value)} placeholder="4 digits" />
+            <Input id="extension" value={form.extension} onChange={e => updateField('extension', e.target.value)} placeholder="3 or 4 digits" />
             {errors.extension && <p className="text-xs text-destructive">{errors.extension}</p>}
           </div>
           <div className="space-y-2">

@@ -1,37 +1,59 @@
-import { mockDepartments, type Department } from '@/data/mockData';
+import { api } from '@/lib/api';
+import type { Department } from '@/data/mockData';
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+interface BackendDepartment {
+  id: string;
+  name: string;
+  code?: string;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
 
-let departments = [...mockDepartments];
+function mapDepartment(dept: BackendDepartment): Department {
+  return {
+    id: dept.id,
+    name: dept.name,
+    color: dept.color || '#3B82F6',
+    employeeCount: 0,
+  };
+}
 
 export const departmentService = {
   async getAll(): Promise<Department[]> {
-    await delay(200);
-    return [...departments];
+    const depts = await api.get<BackendDepartment[]>('/departments');
+    return depts.map(mapDepartment);
   },
 
   async create(name: string, color: string): Promise<Department> {
-    await delay(400);
-    const dept: Department = {
-      id: String(Date.now()),
+    const dept = await api.post<BackendDepartment>('/departments', {
       name,
-      color,
-      employeeCount: 0,
-    };
-    departments.push(dept);
-    return dept;
+      code: name.substring(0, 3).toUpperCase(),
+    });
+    return mapDepartment(dept);
   },
 
   async rename(id: string, newName: string): Promise<Department> {
-    await delay(300);
-    const index = departments.findIndex(d => d.id === id);
-    if (index === -1) throw new Error('Department not found');
-    departments[index] = { ...departments[index], name: newName };
-    return departments[index];
+    const dept = await api.put<BackendDepartment>(`/departments/${id}`, {
+      name: newName,
+      code: newName.substring(0, 3).toUpperCase(),
+    });
+    return mapDepartment(dept);
+  },
+
+  async update(id: string, data: { name?: string; color?: string }): Promise<Department> {
+    const updates: Record<string, unknown> = {};
+    if (data.name) {
+      updates.name = data.name;
+      updates.code = data.name.substring(0, 3).toUpperCase();
+    }
+    if (data.color) updates.color = data.color;
+    
+    const dept = await api.put<BackendDepartment>(`/departments/${id}`, updates);
+    return mapDepartment(dept);
   },
 
   async delete(id: string): Promise<void> {
-    await delay(400);
-    departments = departments.filter(d => d.id !== id);
+    await api.delete(`/departments/${id}`);
   },
 };
