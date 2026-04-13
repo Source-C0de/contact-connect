@@ -33,6 +33,11 @@ export interface SystemUser {
   role: UserRole;
   lastLogin: string;
   status: 'active' | 'inactive';
+  // Device fingerprint (populated from login)
+  lastIP?: string | null;
+  lastOS?: string | null;
+  lastBrowser?: string | null;
+  architecture?: string | null;
 }
 
 export interface SyncLog {

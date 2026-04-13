@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSessionManager } from '@/hooks/useSessionManager';
 import {
   Users, LayoutDashboard, FolderOpen, UserPlus, Settings, FileText,
   BookOpen, UserCircle, LogOut, Menu, X, ChevronLeft
@@ -29,6 +30,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+
+  // Enforce admin-configured session policy (inactivity timeout + browser close logout)
+  useSessionManager();
 
   const navItems = user?.role === 'admin' ? adminNav : userNav;
 
