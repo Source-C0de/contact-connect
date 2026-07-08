@@ -2,34 +2,64 @@ import { api, type PaginatedResponse } from '@/lib/api';
 import type { Employee } from '@/data/mockData';
 import type { Department } from '@/data/mockData';
 
+// The LAN server returns camelCase fields (fullName, workEmail, ...)
+// while the per-browser localStorage mirror uses snake_case. Accept both
+// so a single mapper works against either backend.
 interface BackendEmployee {
   id: string;
-  full_name: string;
-  job_title: string;
-  department_id: string;
-  department_name: string;
-  extension: string;
-  work_email: string;
-  mobile: string | null;
-  office_location: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  fullName?: string;
+  full_name?: string;
+  jobTitle?: string;
+  job_title?: string;
+  department?: string;
+  department_name?: string;
+  departmentId?: string;
+  department_id?: string;
+  email?: string;
+  work_email?: string;
+  extension?: string;
+  mobile?: string | null;
+  location?: string;
+  office_location?: string | null;
+  status?: 'active' | 'inactive';
+  onlineStatus?: 'online' | 'offline';
+  is_active?: boolean;
+  createdAt?: string;
+  created_at?: string;
+  dateAdded?: string;
+}
+
+function toIsoDate(value: string | undefined): string {
+  if (!value) return '';
+  // Already a plain "YYYY-MM-DD" — keep as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
 }
 
 function mapEmployee(emp: BackendEmployee): Employee {
+  const fullName = emp.fullName || emp.full_name || '';
+  const jobTitle = emp.jobTitle || emp.job_title || '';
+  const department = emp.department || emp.department_name || '';
+  const email = emp.email || emp.work_email || '';
+  const active =
+    emp.status === 'active' ||
+    emp.status === undefined
+      ? emp.status === 'inactive' ? false : (emp.is_active ?? true)
+      : true;
   return {
     id: emp.id,
-    fullName: emp.full_name,
-    jobTitle: emp.job_title,
-    department: emp.department_name,
-    email: emp.work_email,
-    extension: emp.extension,
+    fullName,
+    jobTitle,
+    department,
+    email,
+    extension: emp.extension || '',
     mobile: emp.mobile || '',
-    location: emp.office_location || '',
-    status: emp.is_active ? 'active' : 'inactive',
-    onlineStatus: emp.is_active ? 'online' : 'offline',
-    dateAdded: new Date(emp.created_at).toISOString().split('T')[0],
+    location: emp.location || emp.office_location || '',
+    status: active ? 'active' : 'inactive',
+    onlineStatus: emp.onlineStatus || (active ? 'online' : 'offline'),
+    dateAdded: toIsoDate(emp.dateAdded || emp.createdAt || emp.created_at),
   };
 }
 

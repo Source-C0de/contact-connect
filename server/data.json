@@ -1,0 +1,202 @@
+{
+  "users": [
+    {
+      "id": "u-admin",
+      "email": "admin@corp.com",
+      "name": "Admin User",
+      "role": "admin",
+      "passwordHash": "136601fb3dd31184f5333cc4b15d61d4ba6fd71ebbc5d3249fc02c1ad98edaa1",
+      "isActive": true,
+      "lastLogin": "2026-07-08T07:46:45.611Z",
+      "createdAt": "2026-07-08T07:46:13.518Z"
+    }
+  ],
+  "employees": [
+    {
+      "id": "e-1",
+      "fullName": "Sarah Johnson",
+      "jobTitle": "Senior Software Engineer",
+      "departmentName": "Engineering",
+      "workEmail": "sarah.johnson@corp.com",
+      "extension": "1001",
+      "mobile": "+1 (555) 234-5678",
+      "officeLocation": "New York - Floor 3",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-2",
+      "fullName": "Michael Chen",
+      "jobTitle": "Product Manager",
+      "departmentName": "Engineering",
+      "workEmail": "michael.chen@corp.com",
+      "extension": "1002",
+      "mobile": "+1 (555) 345-6789",
+      "officeLocation": "New York - Floor 3",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-3",
+      "fullName": "Emily Rodriguez",
+      "jobTitle": "UX Designer",
+      "departmentName": "Engineering",
+      "workEmail": "emily.rodriguez@corp.com",
+      "extension": "1003",
+      "mobile": "+1 (555) 456-7890",
+      "officeLocation": "San Francisco - Floor 2",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-4",
+      "fullName": "James Wilson",
+      "jobTitle": "Sales Director",
+      "departmentName": "Sales",
+      "workEmail": "james.wilson@corp.com",
+      "extension": "2001",
+      "mobile": "+1 (555) 567-8901",
+      "officeLocation": "Chicago - Floor 1",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-6",
+      "fullName": "Rachel Thompson",
+      "jobTitle": "HR Manager",
+      "departmentName": "HR",
+      "workEmail": "rachel.thompson@corp.com",
+      "extension": "3001",
+      "mobile": "+1 (555) 890-1234",
+      "officeLocation": "New York - Floor 2",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-7",
+      "fullName": "Robert Taylor",
+      "jobTitle": "CFO",
+      "departmentName": "Finance",
+      "workEmail": "robert.taylor@corp.com",
+      "extension": "4001",
+      "mobile": "+1 (555) 123-4567",
+      "officeLocation": "New York - Floor 5",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-9",
+      "fullName": "Kevin O'Brien",
+      "jobTitle": "Operations Manager",
+      "departmentName": "Operations",
+      "workEmail": "kevin.obrien@corp.com",
+      "extension": "6001",
+      "mobile": "+1 (555) 789-0124",
+      "officeLocation": "Chicago - Floor 2",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:46:13.519Z",
+      "updatedAt": "2026-07-08T07:46:13.519Z"
+    },
+    {
+      "id": "e-03c8183e1317",
+      "fullName": "Fahmim Mohammod Shahriar ",
+      "jobTitle": "IT Support Officer",
+      "departmentName": "IT",
+      "workEmail": "fshahriar@alkhuraiji-afpc.com",
+      "extension": "908",
+      "mobile": "+966547350250",
+      "officeLocation": "Main Building, Floor 1",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:47:59.917Z",
+      "updatedAt": "2026-07-08T07:47:59.917Z"
+    }
+  ],
+  "departments": [
+    {
+      "id": "d-eng",
+      "name": "Engineering",
+      "color": "#3B82F6"
+    },
+    {
+      "id": "d-sales",
+      "name": "Sales",
+      "color": "#F59E0B"
+    },
+    {
+      "id": "d-hr",
+      "name": "HR",
+      "color": "#EC4899"
+    },
+    {
+      "id": "d-fin",
+      "name": "Finance",
+      "color": "#10B981"
+    },
+    {
+      "id": "d-it",
+      "name": "IT",
+      "color": "#8B5CF6"
+    },
+    {
+      "id": "d-ops",
+      "name": "Operations",
+      "color": "#F97316"
+    }
+  ],
+  "syncLogs": [],
+  "activityLogs": [
+    {
+      "id": "log-6a3e13bc92ee",
+      "userEmail": "admin@corp.com",
+      "action": "Created",
+      "entityType": "employee",
+      "entityId": "e-03c8183e1317",
+      "details": {
+        "name": "Fahmim Mohammod Shahriar "
+      },
+      "createdAt": "2026-07-08T07:47:59.917Z"
+    },
+    {
+      "id": "log-b17ae606ae8d",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-8",
+      "details": {
+        "name": "Jessica Adams"
+      },
+      "createdAt": "2026-07-08T07:47:28.732Z"
+    },
+    {
+      "id": "log-c146b7e9c077",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-5",
+      "details": {
+        "name": "Amanda Foster"
+      },
+      "createdAt": "2026-07-08T07:46:57.908Z"
+    },
+    {
+      "id": "log-de4b1990b96c",
+      "userEmail": "admin@corp.com",
+      "action": "Login",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-08T07:46:45.614Z"
+    }
+  ],
+  "sessionSettings": {
+    "inactivityTimeoutMinutes": 30,
+    "logoutOnBrowserClose": false
+  },
+  "sessionSecret": "oFUK8hu0DlmrDp_932lWbNkDB_vZU9M_m2yYHU53lHY"
+}

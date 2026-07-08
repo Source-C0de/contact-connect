@@ -6,8 +6,9 @@ interface BackendDepartment {
   name: string;
   code?: string;
   color?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+  employeeCount?: number;
 }
 
 function mapDepartment(dept: BackendDepartment): Department {
@@ -15,7 +16,7 @@ function mapDepartment(dept: BackendDepartment): Department {
     id: dept.id,
     name: dept.name,
     color: dept.color || '#3B82F6',
-    employeeCount: 0,
+    employeeCount: dept.employeeCount || 0,
   };
 }
 

@@ -5,7 +5,7 @@ import type { AuthUser } from '@/data/mockData';
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -22,9 +22,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<AuthUser> => {
     const u = await authService.login(email, password);
     setUser(u);
+    return u;
   }, []);
 
   const logout = useCallback(async () => {

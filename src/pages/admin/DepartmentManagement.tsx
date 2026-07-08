@@ -19,32 +19,57 @@ export default function DepartmentManagement() {
   const [name, setName] = useState('');
   const [color, setColor] = useState(colorOptions[0]);
 
-  useEffect(() => { departmentService.getAll().then(setDepartments); }, []);
+  const loadDepartments = async () => {
+    try {
+      const list = await departmentService.getAll();
+      setDepartments(list);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to load departments: ${message}`);
+    }
+  };
+
+  useEffect(() => { loadDepartments(); }, []);
 
   const handleAdd = async () => {
     if (!name.trim()) return;
-    await departmentService.create(name.trim(), color);
-    setDepartments(await departmentService.getAll());
-    setShowAdd(false);
-    setName('');
-    toast.success('Department added');
+    try {
+      await departmentService.create(name.trim(), color);
+      await loadDepartments();
+      setShowAdd(false);
+      setName('');
+      toast.success('Department added');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to add department: ${message}`);
+    }
   };
 
   const handleRename = async () => {
     if (!editDept || !name.trim()) return;
-    await departmentService.rename(editDept.id, name.trim());
-    setDepartments(await departmentService.getAll());
-    setEditDept(null);
-    setName('');
-    toast.success('Department renamed');
+    try {
+      await departmentService.rename(editDept.id, name.trim());
+      await loadDepartments();
+      setEditDept(null);
+      setName('');
+      toast.success('Department renamed');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to rename department: ${message}`);
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteDept) return;
-    await departmentService.delete(deleteDept.id);
-    setDepartments(await departmentService.getAll());
-    setDeleteDept(null);
-    toast.success('Department deleted');
+    try {
+      await departmentService.delete(deleteDept.id);
+      await loadDepartments();
+      setDeleteDept(null);
+      toast.success('Department deleted');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to delete department: ${message}`);
+    }
   };
 
   return (

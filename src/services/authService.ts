@@ -1,24 +1,26 @@
 import { api } from '@/lib/api';
 import type { AuthUser } from '@/data/mockData';
 
-interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
-  user: {
-    id: string;
-    email: string;
-    role: 'admin' | 'user';
-    is_active: boolean;
-  };
+interface BackendUser {
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  is_active: boolean;
 }
 
-interface MeResponse {
+interface ServerLoginResponse {
+  access_token: string;
+  refresh_token: string;
+  user: BackendUser;
+}
+
+interface ServerMeResponse {
   user_id: string;
   email: string;
   role: 'admin' | 'user';
 }
 
-function mapBackendUser(user: LoginResponse['user'] | MeResponse): AuthUser {
+function mapBackendUser(user: BackendUser | ServerMeResponse): AuthUser {
   return {
     id: 'id' in user ? user.id : user.user_id,
     email: user.email,
@@ -29,16 +31,33 @@ function mapBackendUser(user: LoginResponse['user'] | MeResponse): AuthUser {
 
 export const authService = {
   async login(email: string, password: string): Promise<AuthUser> {
-    const response = await api.post<LoginResponse>('/auth/login', {
-      email,
-      password,
-    });
+    let accessToken = '';
+    let refreshToken = '';
+    let user: AuthUser;
 
-    localStorage.setItem('contacthub_access_token', response.access_token);
-    localStorage.setItem('contacthub_refresh_token', response.refresh_token);
-    localStorage.setItem('contacthub_user', JSON.stringify(mapBackendUser(response.user)));
+    try {
+      const response = await api.post<ServerLoginResponse>('/auth/login', {
+        email,
+        password,
+      });
+      accessToken = response.access_token;
+      refreshToken = response.refresh_token || accessToken;
+      user = mapBackendUser(response.user);
+    } catch (err) {
+      // LAN server unreachable -> fall back to per-browser localStorage store.
+      const local = await api.__local.request<
+        { token: string; user: BackendUser }
+      >('POST', '/auth/login', { email, password });
+      accessToken = local.token;
+      refreshToken = local.token;
+      user = mapBackendUser(local.user);
+    }
 
-    return mapBackendUser(response.user);
+    localStorage.setItem('contacthub_access_token', accessToken);
+    localStorage.setItem('contacthub_refresh_token', refreshToken);
+    localStorage.setItem('contacthub_user', JSON.stringify(user));
+
+    return user;
   },
 
   async logout(): Promise<void> {
@@ -46,7 +65,7 @@ export const authService = {
     try {
       await api.post('/auth/logout', { refresh_token: refreshToken });
     } catch {
-      // Ignore errors during logout
+      // Server unreachable, ignore — we still clear local state.
     } finally {
       localStorage.removeItem('contacthub_access_token');
       localStorage.removeItem('contacthub_refresh_token');
@@ -59,7 +78,7 @@ export const authService = {
     if (!token) return null;
 
     try {
-      const response = await api.get<MeResponse>('/auth/me');
+      const response = await api.get<ServerMeResponse>('/auth/me');
       const user = mapBackendUser(response);
       localStorage.setItem('contacthub_user', JSON.stringify(user));
       return user;
@@ -73,7 +92,7 @@ export const authService = {
 
   async changePassword(oldPassword: string, newPassword: string): Promise<void> {
     await api.put('/auth/password', {
-      old_password: oldPassword,
+      current_password: oldPassword,
       new_password: newPassword,
     });
   },

@@ -3,13 +3,13 @@ import type { ActivityLog, ActionType } from '@/data/mockData';
 
 interface BackendAuditLog {
   id: string;
-  user_id: string;
+  user_id?: string;
   user_email: string;
   action: string;
   entity_type: string;
   entity_id: string;
-  details: Record<string, unknown> | null;
-  ip_address: string;
+  details?: Record<string, unknown> | null;
+  ip_address?: string;
   created_at: string;
 }
 
@@ -19,7 +19,10 @@ function mapAuditLog(log: BackendAuditLog): ActivityLog {
     timestamp: log.created_at,
     actor: log.user_email.split('@')[0],
     action: log.action as ActionType,
-    target: log.entity_type,
+    target:
+      (typeof log.details?.name === 'string' && log.details.name) ||
+      (typeof log.details?.email === 'string' && log.details.email) ||
+      log.entity_type,
   };
 }
 

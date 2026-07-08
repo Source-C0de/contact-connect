@@ -95,8 +95,9 @@ export default function EmployeeForm() {
         toast.success('Employee created');
       }
       navigate('/admin/directory');
-    } catch {
-      toast.error('Something went wrong');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      toast.error(`Failed to save employee: ${message}`);
     } finally {
       setLoading(false);
     }

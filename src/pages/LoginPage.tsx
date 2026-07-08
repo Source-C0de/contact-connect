@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -14,21 +14,24 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (user) {
-    const target = user.role === 'admin' ? '/admin/dashboard' : '/user/directory';
-    navigate(target, { replace: true });
-    return null;
-  }
+  // If a session already exists (e.g. user navigated back), send them home.
+  useEffect(() => {
+    if (user) {
+      const target = user.role === 'admin' ? '/admin/dashboard' : '/user/directory';
+      navigate(target, { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      const stored = localStorage.getItem('contacthub_user');
-      const u = stored ? JSON.parse(stored) : null;
-      navigate(u?.role === 'admin' ? '/admin/dashboard' : '/user/directory', { replace: true });
+      const authedUser = await login(email, password);
+      navigate(
+        authedUser?.role === 'admin' ? '/admin/dashboard' : '/user/directory',
+        { replace: true },
+      );
     } catch {
       setError('Invalid email or password');
     } finally {

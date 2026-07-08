@@ -6,10 +6,10 @@ interface BackendSyncLog {
   sync_type: string;
   status: string;
   records_affected: number;
-  error_message: string | null;
+  error_message?: string | null;
   started_at: string;
-  completed_at: string | null;
-  created_at: string;
+  completed_at?: string | null;
+  created_at?: string;
 }
 
 interface SyncSetting {
