@@ -7,102 +7,21 @@
       "role": "admin",
       "passwordHash": "136601fb3dd31184f5333cc4b15d61d4ba6fd71ebbc5d3249fc02c1ad98edaa1",
       "isActive": true,
-      "lastLogin": "2026-07-08T07:46:45.611Z",
+      "lastLogin": "2026-07-13T07:14:19.390Z",
       "createdAt": "2026-07-08T07:46:13.518Z"
+    },
+    {
+      "id": "u-0c0442d667bf",
+      "email": "user@alkhuraiji.com",
+      "name": "user",
+      "role": "user",
+      "passwordHash": "f70aaa94c2a371cc8a140c50f2981c6e14dc9531aa3ad4cbb860c734604b354d",
+      "isActive": true,
+      "lastLogin": "2026-07-08T07:58:13.401Z",
+      "createdAt": "2026-07-08T07:58:00.755Z"
     }
   ],
   "employees": [
-    {
-      "id": "e-1",
-      "fullName": "Sarah Johnson",
-      "jobTitle": "Senior Software Engineer",
-      "departmentName": "Engineering",
-      "workEmail": "sarah.johnson@corp.com",
-      "extension": "1001",
-      "mobile": "+1 (555) 234-5678",
-      "officeLocation": "New York - Floor 3",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
-    {
-      "id": "e-2",
-      "fullName": "Michael Chen",
-      "jobTitle": "Product Manager",
-      "departmentName": "Engineering",
-      "workEmail": "michael.chen@corp.com",
-      "extension": "1002",
-      "mobile": "+1 (555) 345-6789",
-      "officeLocation": "New York - Floor 3",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
-    {
-      "id": "e-3",
-      "fullName": "Emily Rodriguez",
-      "jobTitle": "UX Designer",
-      "departmentName": "Engineering",
-      "workEmail": "emily.rodriguez@corp.com",
-      "extension": "1003",
-      "mobile": "+1 (555) 456-7890",
-      "officeLocation": "San Francisco - Floor 2",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
-    {
-      "id": "e-4",
-      "fullName": "James Wilson",
-      "jobTitle": "Sales Director",
-      "departmentName": "Sales",
-      "workEmail": "james.wilson@corp.com",
-      "extension": "2001",
-      "mobile": "+1 (555) 567-8901",
-      "officeLocation": "Chicago - Floor 1",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
-    {
-      "id": "e-6",
-      "fullName": "Rachel Thompson",
-      "jobTitle": "HR Manager",
-      "departmentName": "HR",
-      "workEmail": "rachel.thompson@corp.com",
-      "extension": "3001",
-      "mobile": "+1 (555) 890-1234",
-      "officeLocation": "New York - Floor 2",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
-    {
-      "id": "e-7",
-      "fullName": "Robert Taylor",
-      "jobTitle": "CFO",
-      "departmentName": "Finance",
-      "workEmail": "robert.taylor@corp.com",
-      "extension": "4001",
-      "mobile": "+1 (555) 123-4567",
-      "officeLocation": "New York - Floor 5",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
-    {
-      "id": "e-9",
-      "fullName": "Kevin O'Brien",
-      "jobTitle": "Operations Manager",
-      "departmentName": "Operations",
-      "workEmail": "kevin.obrien@corp.com",
-      "extension": "6001",
-      "mobile": "+1 (555) 789-0124",
-      "officeLocation": "Chicago - Floor 2",
-      "isActive": true,
-      "createdAt": "2026-07-08T07:46:13.519Z",
-      "updatedAt": "2026-07-08T07:46:13.519Z"
-    },
     {
       "id": "e-03c8183e1317",
       "fullName": "Fahmim Mohammod Shahriar ",
@@ -115,6 +34,19 @@
       "isActive": true,
       "createdAt": "2026-07-08T07:47:59.917Z",
       "updatedAt": "2026-07-08T07:47:59.917Z"
+    },
+    {
+      "id": "e-b2c4b20c2b17",
+      "fullName": "Mohammed Ibrahim Al Jarboa ",
+      "jobTitle": "IT Manager",
+      "departmentName": "IT",
+      "workEmail": "it@alkhuraiji.com",
+      "extension": "907",
+      "mobile": "",
+      "officeLocation": "Main Building, Floor 1",
+      "isActive": true,
+      "createdAt": "2026-07-08T07:54:32.889Z",
+      "updatedAt": "2026-07-08T07:54:32.889Z"
     }
   ],
   "departments": [
@@ -147,10 +79,219 @@
       "id": "d-ops",
       "name": "Operations",
       "color": "#F97316"
+    },
+    {
+      "id": "d-97d4aed346cc",
+      "name": "Maintainance",
+      "color": "#3B82F6"
     }
   ],
   "syncLogs": [],
   "activityLogs": [
+    {
+      "id": "log-da47494d114d",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "department",
+      "entityId": "d-290b6ee21e50",
+      "details": {
+        "name": "Test"
+      },
+      "createdAt": "2026-07-13T07:14:40.224Z"
+    },
+    {
+      "id": "log-3d3ec0213d8f",
+      "userEmail": "admin@corp.com",
+      "action": "Created",
+      "entityType": "department",
+      "entityId": "d-290b6ee21e50",
+      "details": {
+        "name": "Test"
+      },
+      "createdAt": "2026-07-13T07:14:37.734Z"
+    },
+    {
+      "id": "log-df9097223371",
+      "userEmail": "admin@corp.com",
+      "action": "Login",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-13T07:14:19.397Z"
+    },
+    {
+      "id": "log-a6d0a6bc1962",
+      "userEmail": "admin@corp.com",
+      "action": "Logout",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-08T10:05:38.603Z"
+    },
+    {
+      "id": "log-29c3e822f5ba",
+      "userEmail": "admin@corp.com",
+      "action": "Login",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-08T09:13:52.578Z"
+    },
+    {
+      "id": "log-7037dd53edc4",
+      "userEmail": "user@alkhuraiji.com",
+      "action": "Logout",
+      "entityType": "session",
+      "entityId": "u-0c0442d667bf",
+      "details": null,
+      "createdAt": "2026-07-08T09:13:50.376Z"
+    },
+    {
+      "id": "log-3c715924a424",
+      "userEmail": "user@alkhuraiji.com",
+      "action": "Login",
+      "entityType": "session",
+      "entityId": "u-0c0442d667bf",
+      "details": null,
+      "createdAt": "2026-07-08T07:58:13.403Z"
+    },
+    {
+      "id": "log-efb7e46c2fbd",
+      "userEmail": "admin@corp.com",
+      "action": "Logout",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-08T07:58:05.619Z"
+    },
+    {
+      "id": "log-b12f07aad443",
+      "userEmail": "admin@corp.com",
+      "action": "Created",
+      "entityType": "user",
+      "entityId": "u-0c0442d667bf",
+      "details": {
+        "email": "user@alkhuraiji.com"
+      },
+      "createdAt": "2026-07-08T07:58:00.755Z"
+    },
+    {
+      "id": "log-f9e7ae534f1d",
+      "userEmail": "admin@corp.com",
+      "action": "Login",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-08T07:57:44.622Z"
+    },
+    {
+      "id": "log-c833e682211e",
+      "userEmail": "admin@corp.com",
+      "action": "Logout",
+      "entityType": "session",
+      "entityId": "u-admin",
+      "details": null,
+      "createdAt": "2026-07-08T07:56:55.357Z"
+    },
+    {
+      "id": "log-6a0d5fc96264",
+      "userEmail": "admin@corp.com",
+      "action": "Created",
+      "entityType": "department",
+      "entityId": "d-97d4aed346cc",
+      "details": {
+        "name": "Maintainance"
+      },
+      "createdAt": "2026-07-08T07:55:38.546Z"
+    },
+    {
+      "id": "log-8ba36c2f5b26",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-9",
+      "details": {
+        "name": "Kevin O'Brien"
+      },
+      "createdAt": "2026-07-08T07:55:22.966Z"
+    },
+    {
+      "id": "log-ca3b03b51003",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-6",
+      "details": {
+        "name": "Rachel Thompson"
+      },
+      "createdAt": "2026-07-08T07:55:18.956Z"
+    },
+    {
+      "id": "log-2b11460fd849",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-1",
+      "details": {
+        "name": "Sarah Johnson"
+      },
+      "createdAt": "2026-07-08T07:55:11.784Z"
+    },
+    {
+      "id": "log-0820335b1326",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-2",
+      "details": {
+        "name": "Michael Chen"
+      },
+      "createdAt": "2026-07-08T07:55:11.761Z"
+    },
+    {
+      "id": "log-00534905353f",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-3",
+      "details": {
+        "name": "Emily Rodriguez"
+      },
+      "createdAt": "2026-07-08T07:55:11.757Z"
+    },
+    {
+      "id": "log-99adc97242be",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-7",
+      "details": {
+        "name": "Robert Taylor"
+      },
+      "createdAt": "2026-07-08T07:54:56.123Z"
+    },
+    {
+      "id": "log-9dddac1ac4ce",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "employee",
+      "entityId": "e-4",
+      "details": {
+        "name": "James Wilson"
+      },
+      "createdAt": "2026-07-08T07:54:48.931Z"
+    },
+    {
+      "id": "log-60440ba08d92",
+      "userEmail": "admin@corp.com",
+      "action": "Created",
+      "entityType": "employee",
+      "entityId": "e-b2c4b20c2b17",
+      "details": {
+        "name": "Mohammed Ibrahim Al Jarboa "
+      },
+      "createdAt": "2026-07-08T07:54:32.889Z"
+    },
     {
       "id": "log-6a3e13bc92ee",
       "userEmail": "admin@corp.com",

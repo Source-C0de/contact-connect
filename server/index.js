@@ -1,6 +1,8 @@
 // ContactHub LAN server
 // - Single source of truth: server/data.json on disk (acts as the "database").
-// - Bound to 0.0.0.0 so other machines on the office network can reach it.
+// - Bound to a static LAN IP (HOST env var, defaults to 0.0.0.0) so other
+//   machines on the office network can reach it. Override HOST=170.170.15.18
+//   in the project .env to pin it to the office static IP.
 // - Stateless auth: a signed session token (HMAC) is returned by /auth/login.
 //
 // No external services, no DB, no npm packages beyond express + cors.

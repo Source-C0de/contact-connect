@@ -77,16 +77,35 @@ export const authService = {
     const token = localStorage.getItem('contacthub_access_token');
     if (!token) return null;
 
+    // Helper: rehydrate from cached user blob so a transient network blip
+    // (LAN server briefly unreachable, server restarting) doesn't bounce
+    // the user to the login screen on every page refresh.
+    const cached = (): AuthUser | null => {
+      try {
+        const raw = localStorage.getItem('contacthub_user');
+        return raw ? (JSON.parse(raw) as AuthUser) : null;
+      } catch {
+        return null;
+      }
+    };
+
     try {
       const response = await api.get<ServerMeResponse>('/auth/me');
       const user = mapBackendUser(response);
       localStorage.setItem('contacthub_user', JSON.stringify(user));
       return user;
-    } catch {
-      localStorage.removeItem('contacthub_access_token');
-      localStorage.removeItem('contacthub_refresh_token');
-      localStorage.removeItem('contacthub_user');
-      return null;
+    } catch (err) {
+      // Only the server explicitly rejecting the token (HTTP 401) should
+      // wipe the session. Anything else — network failure, server restart,
+      // 5xx — keep the cached user so the UI stays stable.
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 401) {
+        localStorage.removeItem('contacthub_access_token');
+        localStorage.removeItem('contacthub_refresh_token');
+        localStorage.removeItem('contacthub_user');
+        return null;
+      }
+      return cached();
     }
   },
 
