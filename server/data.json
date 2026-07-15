@@ -7,7 +7,7 @@
       "role": "admin",
       "passwordHash": "136601fb3dd31184f5333cc4b15d61d4ba6fd71ebbc5d3249fc02c1ad98edaa1",
       "isActive": true,
-      "lastLogin": "2026-07-13T07:14:19.390Z",
+      "lastLogin": "2026-07-15T09:48:30.984Z",
       "createdAt": "2026-07-08T07:46:13.518Z"
     },
     {
@@ -42,11 +42,11 @@
       "departmentName": "IT",
       "workEmail": "it@alkhuraiji.com",
       "extension": "907",
-      "mobile": "",
+      "mobile": "+1 (555) 678-9012",
       "officeLocation": "Main Building, Floor 1",
       "isActive": true,
       "createdAt": "2026-07-08T07:54:32.889Z",
-      "updatedAt": "2026-07-08T07:54:32.889Z"
+      "updatedAt": "2026-07-15T09:48:58.417Z"
     }
   ],
   "departments": [
@@ -88,6 +88,39 @@
   ],
   "syncLogs": [],
   "activityLogs": [
+    {
+      "id": "log-aba164cef4c0",
+      "userEmail": "admin@corp.com",
+      "action": "Updated",
+      "entityType": "employee",
+      "entityId": "e-b2c4b20c2b17",
+      "details": {
+        "name": "Mohammed Ibrahim Al Jarboa "
+      },
+      "createdAt": "2026-07-15T09:48:58.417Z"
+    },
+    {
+      "id": "log-6a572e1d7df1",
+      "userEmail": "admin@corp.com",
+      "action": "Deleted",
+      "entityType": "department",
+      "entityId": "d-cd4aa1aeda89",
+      "details": {
+        "name": "Test"
+      },
+      "createdAt": "2026-07-15T09:48:48.614Z"
+    },
+    {
+      "id": "log-d457a026ba0a",
+      "userEmail": "admin@corp.com",
+      "action": "Created",
+      "entityType": "department",
+      "entityId": "d-cd4aa1aeda89",
+      "details": {
+        "name": "Test"
+      },
+      "createdAt": "2026-07-15T09:48:46.338Z"
+    },
     {
       "id": "log-da47494d114d",
       "userEmail": "admin@corp.com",
