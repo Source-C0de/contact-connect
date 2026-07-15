@@ -1,0 +1,28 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: contacthub:latest
+    # No explicit container_name — let Compose derive it (e.g. `contacts_app_1`).
+    # A fixed name + Compose v1 (docker-compose 1.29.x) recreates crashes on
+    # modern Docker Engine because v1 reads the deprecated `ContainerConfig`
+    # field from `docker image inspect` that the Engine no longer populates.
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      NODE_ENV: production
+      PORT: "8090"
+      HOST: "0.0.0.0"
+      DATA_FILE: /data/data.json
+      # Persist the session secret across container restarts so already-issued
+      # tokens remain valid. Leave unset to let the server auto-generate one
+      # on first boot and persist it into the data.json file in the volume.
+      # SESSION_SECRET: "change-me-to-a-long-random-string"
+    volumes:
+      - contacthub-data:/data
+
+volumes:
+  contacthub-data:
+    name: contacthub-data

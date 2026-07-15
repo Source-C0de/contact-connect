@@ -12,6 +12,13 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:restart": "docker compose restart app",
+    "docker:rebuild": "docker compose up -d --build",
+    "docker:ps": "docker compose ps",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

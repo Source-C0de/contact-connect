@@ -48,6 +48,99 @@ Serve `dist/` with any static host (nginx, IIS, `npx serve`, etc.) and
 point it at the API. Set `VITE_API_URL=http://<server-ip>:8080/api/v1` at
 build time if the API is not on the same host as the static site.
 
+## Production (Docker) — single container, persistent data
+
+This is the recommended way to run ContactHub on an office server or a
+small VPS. One container runs the Node API **and** serves the built
+React app from the same process on port **8090**. Data lives in a named
+Docker volume, so `data.json` survives image rebuilds and restarts.
+
+### Prerequisites
+- Docker Engine 24+ and Docker Compose v2
+- Inbound TCP **8090** open on the host firewall
+  (PowerShell, one-time, as admin):
+  ```powershell
+  New-NetFirewallRule -DisplayName "ContactHub" -Direction Inbound `
+    -Protocol TCP -LocalPort 8090 -Action Allow -Profile Private
+  ```
+
+### Build and start
+```bash
+docker compose build         # one-time / whenever code changes
+docker compose up -d         # starts in the background
+docker compose logs -f       # watch logs (Ctrl+C to detach)
+```
+
+Or use the convenience npm scripts:
+```bash
+npm run docker:build
+npm run docker:up
+npm run docker:logs
+```
+
+> **Heads up — Compose v1 vs v2.** The `docker compose` commands above need
+> **Compose v2** (a Docker CLI plugin: `docker compose version` should print
+> `v2.x.x`). The legacy Python tool `docker-compose` 1.29.x crashes on modern
+> Docker Engine with `KeyError: 'ContainerConfig'` because it reads a deprecated
+> field from `docker image inspect`. On Debian/Ubuntu the v2 plugin installs
+> via `sudo apt-get install docker-compose-plugin`. If only the v1 binary is
+> available, run with `docker-compose -f docker-compose.yml up -d --build`
+> after removing the `container_name:` line (or just upgrade to v2).
+
+### Use it
+- From the host machine: <http://localhost:8090>
+- From any office PC:    <http://<server-lan-ip>:8090>
+- Default admin:        `admin@corp.com` / `admin123` — change it after
+  the first login from **User Management** (admin sign-in required).
+
+The frontend auto-detects the API host from `window.location.hostname`,
+so the same image works regardless of the server's IP.
+
+### Verify it's healthy
+```bash
+curl http://localhost:8090/api/v1/health
+# -> {"ok":true,"ts":"2026-07-15T10:00:00.000Z"}
+```
+Docker also runs an internal healthcheck every 30s; `docker compose ps`
+will show `(healthy)` once startup completes (~10s).
+
+### Backup and restore
+The database is a single file inside the named volume:
+```bash
+# Backup (creates a snapshot dated file on the host)
+docker compose exec app cat /data/data.json > data-$(date +%F).json
+
+# Restore
+docker compose cp data-2026-07-15.json app:/data/data.json
+docker compose restart app
+```
+
+The volume also stores the auto-generated `sessionSecret`. Backups are
+point-in-time copies; the next server start will keep using the secret
+in the restored file, so any tokens issued before the restore remain
+valid.
+
+### Update after a code change
+```bash
+git pull
+npm run docker:rebuild        # = docker compose up -d --build
+```
+The named volume is **not** touched, so user data and the session
+secret survive the rebuild.
+
+### Tear down
+```bash
+npm run docker:down            # stops the container, keeps the volume
+docker compose down -v         # ALSO deletes the volume (data loss!)
+```
+
+### Where things live inside the container
+| Path                          | Purpose                                  |
+| ----------------------------- | ---------------------------------------- |
+| `/app/server/index.js`        | The Express API + static SPA host       |
+| `/app/dist/`                  | The built React app (from `npm run build`) |
+| `/data/data.json`             | The whole "database" (users, employees, departments, activity logs, session secret) |
+
 ## Why no database?
 
 - Zero install on a fresh office PC.

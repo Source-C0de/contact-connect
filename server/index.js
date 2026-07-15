@@ -16,9 +16,18 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = Number(process.env.PORT || 8080);
+const PORT = Number(process.env.PORT || 8090);
 const HOST = process.env.HOST || '0.0.0.0'; // listen on every interface so the LAN can reach us
+// In Docker, DATA_FILE is /data/data.json (mounted from a named volume). In
+// local dev it falls back to <server-dir>/data.json next to this file.
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
+// In production (Docker) we serve the React build out of ../../dist. In dev
+// we leave this empty so the Vite dev server (port 5173) is the source of
+// truth for the SPA. STATIC_DIR lets you point at any absolute path.
+const STATIC_DIR = process.env.STATIC_DIR
+  || (process.env.NODE_ENV === 'production'
+    ? path.resolve(__dirname, '..', 'dist')
+    : '');
 // The session secret is generated on first boot and stored in data.json so
 // that restarting the server (e.g. after a power blip) does NOT invalidate
 // every logged-in token. You can override with the SESSION_SECRET env var.
@@ -85,6 +94,13 @@ function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+// Ensure the data directory exists (important for /data in Docker, where the
+// named volume mounts an empty directory on first run).
+try {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+} catch (err) {
+  console.error('Failed to create data directory', path.dirname(DATA_FILE), err);
+}
 let db = loadData();
 
 // ---------------- Password hashing ----------------
@@ -646,6 +662,28 @@ app.get('/api/v1/admin/sync/logs', authMiddleware, adminOnly, (_req, res) => {
     })),
   );
 });
+
+// ---------------- Health + static SPA ----------------
+
+// Lightweight unauthenticated probe used by the Docker healthcheck and ops.
+app.get('/api/v1/health', (_req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString() });
+});
+
+// In production we serve the built React app from the same process so a
+// single container can serve both the UI and the API. In dev this is skipped
+// because the Vite dev server (port 5173) is the source of truth for the SPA.
+if (STATIC_DIR && fs.existsSync(STATIC_DIR)) {
+  app.use(express.static(STATIC_DIR, { maxAge: '1h', index: 'index.html' }));
+  // SPA fallback: anything that isn't /api/* and didn't match a static file
+  // should return index.html so client-side routes work after a hard reload.
+  app.get(/^\/(?!api\/).*/, (_req, res, next) => {
+    const indexPath = path.join(STATIC_DIR, 'index.html');
+    if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
+    next();
+  });
+  console.log(`Serving SPA from ${STATIC_DIR}`);
+}
 
 // ---------------- Start ----------------
 
