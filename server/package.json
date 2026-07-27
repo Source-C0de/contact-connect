@@ -2,15 +2,17 @@
   "name": "contacthub-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Tiny LAN-only JSON store for ContactHub. No database required.",
+  "description": "ContactHub LAN server backed by PostgreSQL.",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "migrate": "node migrate-json-to-db.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "pg": "^8.13.1"
   }
 }

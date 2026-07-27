@@ -50,8 +50,11 @@ export default function UserManagement() {
       setLoading(true);
       const data = await adminService.getUsers();
       setUsers(data);
-    } catch {
-      toast.error('Failed to load users');
+    } catch (err) {
+      // Surface the actual error so we can tell a network blip from a 401/403.
+      const status = (err as { status?: number } | null)?.status;
+      const msg = (err as Error | null)?.message || 'Failed to load users';
+      toast.error(status ? `Failed to load users (HTTP ${status})` : msg);
     } finally {
       setLoading(false);
     }
@@ -64,7 +67,7 @@ export default function UserManagement() {
       setTimeoutMins(s.inactivity_timeout_minutes);
       setLogoutOnClose(s.logout_on_browser_close);
     } catch {
-      // Non-critical
+      // Non-critical — leave the summary bar hidden.
     }
   };
 

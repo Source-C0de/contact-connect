@@ -28,7 +28,11 @@ FROM node:20-alpine AS runner
 ENV NODE_ENV=production \
     PORT=8090 \
     HOST=0.0.0.0 \
-    DATA_FILE=/data/data.json
+    DATA_FILE=/data/data.json \
+    # In Docker the app connects to the `db` service via DATABASE_URL
+    # (set in docker-compose.yml). The default below is only used when
+    # running `node server/index.js` outside of Compose for debugging.
+    DATABASE_URL=postgres://contacthub:contacthub@localhost:5432/contacthub
 
 WORKDIR /app
 

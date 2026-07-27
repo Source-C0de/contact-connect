@@ -1,4 +1,20 @@
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contacthub
+      POSTGRES_PASSWORD: contacthub
+      POSTGRES_DB: contacthub
+    volumes:
+      - contacthub-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contacthub -d contacthub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
   app:
     build:
       context: .
@@ -9,16 +25,22 @@ services:
     # modern Docker Engine because v1 reads the deprecated `ContainerConfig`
     # field from `docker image inspect` that the Engine no longer populates.
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8090:8090"
     environment:
       NODE_ENV: production
       PORT: "8090"
       HOST: "0.0.0.0"
+      DATABASE_URL: postgres://contacthub:contacthub@db:5432/contacthub
+      # Keep DATA_FILE pointing at the legacy file so the one-shot
+      # `npm run migrate` script can find it inside the container.
       DATA_FILE: /data/data.json
       # Persist the session secret across container restarts so already-issued
       # tokens remain valid. Leave unset to let the server auto-generate one
-      # on first boot and persist it into the data.json file in the volume.
+      # on first boot and persist it into the `settings` table.
       # SESSION_SECRET: "change-me-to-a-long-random-string"
     volumes:
       - contacthub-data:/data
@@ -26,3 +48,5 @@ services:
 volumes:
   contacthub-data:
     name: contacthub-data
+  contacthub-postgres:
+    name: contacthub-postgres

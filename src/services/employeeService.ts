@@ -73,6 +73,22 @@ export interface EmployeeFilters {
   sort_order?: string;
 }
 
+// A request that should NOT be retried via local fallback. 4xx errors mean
+// "your input was wrong" (or auth expired) — silently substituting local data
+// would hide a real bug from the user.
+function isLocalFallbackWorthy(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  if (status && status >= 400 && status < 500) return false;
+  return true;
+}
+
+// The localStorage mirror returns plain `{ data, total, page, page_size }`
+// for /employees (see api.__local.request). The LAN server does too, so this
+// shape is the same in both branches.
+interface LocalEmployeePage {
+  data: BackendEmployee[];
+}
+
 export const employeeService = {
   async getAll(filters?: EmployeeFilters): Promise<Employee[]> {
     const params: Record<string, string> = {};
@@ -82,13 +98,32 @@ export const employeeService = {
     if (filters?.page) params.page = String(filters.page);
     if (filters?.page_size) params.page_size = String(filters.page_size);
 
-    const response = await api.get<PaginatedResponse<BackendEmployee>>('/employees', params);
-    return response.data.map(mapEmployee);
+    try {
+      const response = await api.get<PaginatedResponse<BackendEmployee>>('/employees', params);
+      return response.data.map(mapEmployee);
+    } catch (err) {
+      if (!isLocalFallbackWorthy(err)) throw err;
+      // Fall back to localStorage — same query params, snake_case fields.
+      // api.__local.request takes the path (including query string), not a
+      // params object.
+      const qs = new URLSearchParams(params).toString();
+      const local = await api.__local.request<LocalEmployeePage>(
+        'GET',
+        `/employees${qs ? `?${qs}` : ''}`,
+      );
+      return (Array.isArray(local?.data) ? local.data : []).map(mapEmployee);
+    }
   },
 
   async getById(id: string): Promise<Employee> {
-    const emp = await api.get<BackendEmployee>(`/employees/${id}`);
-    return mapEmployee(emp);
+    try {
+      const emp = await api.get<BackendEmployee>(`/employees/${id}`);
+      return mapEmployee(emp);
+    } catch (err) {
+      if (!isLocalFallbackWorthy(err)) throw err;
+      const emp = await api.__local.request<BackendEmployee>('GET', `/employees/${id}`);
+      return mapEmployee(emp);
+    }
   },
 
   async create(data: {
@@ -100,8 +135,14 @@ export const employeeService = {
     mobile?: string;
     office_location?: string;
   }): Promise<Employee> {
-    const emp = await api.post<BackendEmployee>('/employees', data);
-    return mapEmployee(emp);
+    try {
+      const emp = await api.post<BackendEmployee>('/employees', data);
+      return mapEmployee(emp);
+    } catch (err) {
+      if (!isLocalFallbackWorthy(err)) throw err;
+      const emp = await api.__local.request<BackendEmployee>('POST', '/employees', data);
+      return mapEmployee(emp);
+    }
   },
 
   async update(id: string, data: Partial<Employee>): Promise<Employee> {
@@ -113,15 +154,25 @@ export const employeeService = {
     if (data.mobile !== undefined) backendData.mobile = data.mobile || null;
     if (data.location !== undefined) backendData.office_location = data.location || null;
     if (data.status !== undefined) backendData.is_active = data.status === 'active';
-    // Add mapping for department_id
     if ((data as any).department_id !== undefined) backendData.department_id = (data as any).department_id;
 
-    const emp = await api.put<BackendEmployee>(`/employees/${id}`, backendData);
-    return mapEmployee(emp);
+    try {
+      const emp = await api.put<BackendEmployee>(`/employees/${id}`, backendData);
+      return mapEmployee(emp);
+    } catch (err) {
+      if (!isLocalFallbackWorthy(err)) throw err;
+      const emp = await api.__local.request<BackendEmployee>('PUT', `/employees/${id}`, backendData);
+      return mapEmployee(emp);
+    }
   },
 
   async delete(id: string): Promise<void> {
-    await api.delete(`/employees/${id}`);
+    try {
+      await api.delete(`/employees/${id}`);
+    } catch (err) {
+      if (!isLocalFallbackWorthy(err)) throw err;
+      await api.__local.request('DELETE', `/employees/${id}`);
+    }
   },
 
   async bulkDelete(ids: string[]): Promise<void> {

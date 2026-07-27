@@ -1,9 +1,7 @@
 // ContactHub LAN server
-// - Single source of truth: server/data.json on disk (acts as the "database").
-// - Bound to 0.0.0.0 so other machines on the office network can reach it.
+// - Single source of truth: PostgreSQL (see server/db.js).
+// - Bound to 0.0.0.0 so other machines on the office network can reach us.
 // - Stateless auth: a signed session token (HMAC) is returned by /auth/login.
-//
-// No external services, no DB, no npm packages beyond express + cors.
 
 import express from 'express';
 import cors from 'cors';
@@ -12,14 +10,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { initSchema, pool, query, withTx, getSetting, setSetting } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 8090);
 const HOST = process.env.HOST || '0.0.0.0'; // listen on every interface so the LAN can reach us
-// In Docker, DATA_FILE is /data/data.json (mounted from a named volume). In
-// local dev it falls back to <server-dir>/data.json next to this file.
+// Legacy: data.json is only read by the one-shot `migrate` script now.
+// Kept as an env var for backwards compatibility / migration tooling.
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 // In production (Docker) we serve the React build out of ../../dist. In dev
 // we leave this empty so the Vite dev server (port 5173) is the source of
@@ -28,86 +27,26 @@ const STATIC_DIR = process.env.STATIC_DIR
   || (process.env.NODE_ENV === 'production'
     ? path.resolve(__dirname, '..', 'dist')
     : '');
-// The session secret is generated on first boot and stored in data.json so
-// that restarting the server (e.g. after a power blip) does NOT invalidate
-// every logged-in token. You can override with the SESSION_SECRET env var.
+
+// The session secret is generated on first boot and stored in the
+// `settings` table (key = 'sessionSecret') so that restarting the server
+// does NOT invalidate every logged-in token. You can override with the
+// SESSION_SECRET env var for the very first boot.
 function generateSecret() {
   return crypto.randomBytes(32).toString('base64url');
 }
 let SESSION_SECRET = process.env.SESSION_SECRET || null;
 
-// ---------------- Persistence ----------------
-
-const DEFAULT_DATA = {
-  users: [
-    {
-      id: 'u-admin',
-      email: 'admin@corp.com',
-      name: 'Admin User',
-      role: 'admin',
-      passwordHash: hashPassword('admin123'),
-      isActive: true,
-      lastLogin: null,
-      createdAt: new Date().toISOString(),
-    },
-  ],
-  employees: seedEmployees(),
-  departments: seedDepartments(),
-  syncLogs: [],
-  activityLogs: [],
-  sessionSettings: {
-    inactivityTimeoutMinutes: 30,
-    logoutOnBrowserClose: false,
-  },
-  sessionSecret: '',
+const DEFAULT_SESSION_SETTINGS = {
+  inactivityTimeoutMinutes: 30,
+  logoutOnBrowserClose: false,
 };
-
-function loadData() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      const fresh = structuredClone(DEFAULT_DATA);
-      SESSION_SECRET = fresh.sessionSecret || (fresh.sessionSecret = generateSecret());
-      fs.writeFileSync(DATA_FILE, JSON.stringify(fresh, null, 2));
-      return fresh;
-    }
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    // Backfill anything new in DEFAULT_DATA so upgrades don't crash.
-    for (const key of Object.keys(DEFAULT_DATA)) {
-      if (!(key in parsed)) parsed[key] = DEFAULT_DATA[key];
-    }
-    if (!SESSION_SECRET) {
-      SESSION_SECRET = parsed.sessionSecret || (parsed.sessionSecret = generateSecret());
-      saveData(parsed);
-    }
-    return parsed;
-  } catch (err) {
-    console.error('Failed to load data.json, starting fresh:', err);
-    const fresh = structuredClone(DEFAULT_DATA);
-    SESSION_SECRET = fresh.sessionSecret || (fresh.sessionSecret = generateSecret());
-    fs.writeFileSync(DATA_FILE, JSON.stringify(fresh, null, 2));
-    return fresh;
-  }
-}
-
-function saveData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-
-// Ensure the data directory exists (important for /data in Docker, where the
-// named volume mounts an empty directory on first run).
-try {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-} catch (err) {
-  console.error('Failed to create data directory', path.dirname(DATA_FILE), err);
-}
-let db = loadData();
 
 // ---------------- Password hashing ----------------
 // We use a salted SHA-256 hash. This is NOT bcrypt-grade; it's enough to avoid
-// storing plaintext in a file on an office LAN. Anyone with shell on the host
-// already has access, so the threat model is "don't leak the password on a
-// casual disk read".
+// storing plaintext on an office LAN. Anyone with shell on the host already
+// has access, so the threat model is "don't leak the password on a casual
+// disk read".
 
 function hashPassword(password) {
   const salt = 'contacthub-static-salt';
@@ -177,65 +116,9 @@ function adminOnly(req, res, next) {
   next();
 }
 
-// ---------------- Seed data ----------------
-
-function seedDepartments() {
-  return [
-    { id: 'd-eng', name: 'Engineering', color: '#3B82F6' },
-    { id: 'd-sales', name: 'Sales', color: '#F59E0B' },
-    { id: 'd-hr', name: 'HR', color: '#EC4899' },
-    { id: 'd-fin', name: 'Finance', color: '#10B981' },
-    { id: 'd-it', name: 'IT', color: '#8B5CF6' },
-    { id: 'd-ops', name: 'Operations', color: '#F97316' },
-  ];
-}
-
-function seedEmployees() {
-  const now = new Date().toISOString();
-  const list = [
-    ['Sarah Johnson', 'Senior Software Engineer', 'Engineering', 'sarah.johnson@corp.com', '1001', '+1 (555) 234-5678', 'New York - Floor 3'],
-    ['Michael Chen', 'Product Manager', 'Engineering', 'michael.chen@corp.com', '1002', '+1 (555) 345-6789', 'New York - Floor 3'],
-    ['Emily Rodriguez', 'UX Designer', 'Engineering', 'emily.rodriguez@corp.com', '1003', '+1 (555) 456-7890', 'San Francisco - Floor 2'],
-    ['James Wilson', 'Sales Director', 'Sales', 'james.wilson@corp.com', '2001', '+1 (555) 567-8901', 'Chicago - Floor 1'],
-    ['Amanda Foster', 'Account Executive', 'Sales', 'amanda.foster@corp.com', '2002', '+1 (555) 678-9012', 'Chicago - Floor 1'],
-    ['Rachel Thompson', 'HR Manager', 'HR', 'rachel.thompson@corp.com', '3001', '+1 (555) 890-1234', 'New York - Floor 2'],
-    ['Robert Taylor', 'CFO', 'Finance', 'robert.taylor@corp.com', '4001', '+1 (555) 123-4567', 'New York - Floor 5'],
-    ['Jessica Adams', 'IT Director', 'IT', 'jessica.adams@corp.com', '5001', '+1 (555) 456-7891', 'San Francisco - Floor 3'],
-    ['Kevin O\'Brien', 'Operations Manager', 'Operations', 'kevin.obrien@corp.com', '6001', '+1 (555) 789-0124', 'Chicago - Floor 2'],
-  ];
-  return list.map(([fullName, jobTitle, deptName, email, ext, mobile, location], idx) => ({
-    id: `e-${idx + 1}`,
-    fullName,
-    jobTitle,
-    departmentName: deptName,
-    workEmail: email,
-    extension: ext,
-    mobile,
-    officeLocation: location,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  }));
-}
-
-// ---------------- Helpers ----------------
-
-const newId = (prefix) => `${prefix}-${crypto.randomBytes(6).toString('hex')}`;
-const nowIso = () => new Date().toISOString();
-
-function logActivity(actorEmail, action, entityType, entityId, details = null) {
-  db.activityLogs.unshift({
-    id: newId('log'),
-    userEmail: actorEmail,
-    action,
-    entityType,
-    entityId,
-    details,
-    createdAt: nowIso(),
-  });
-  // keep last 500 entries
-  db.activityLogs = db.activityLogs.slice(0, 500);
-}
+// ---------------- Row mappers ----------------
+// The DB returns snake_case rows; the HTTP contract is camelCase. These
+// helpers normalize once at the edge so route handlers stay readable.
 
 function publicUser(u) {
   return {
@@ -243,46 +126,34 @@ function publicUser(u) {
     email: u.email,
     name: u.name,
     role: u.role,
-    isActive: u.isActive,
-    lastLogin: u.lastLogin,
+    isActive: u.is_active,
+    lastLogin: u.last_login,
+    createdAt: u.created_at,
   };
 }
 
-function employeeToFrontend(e) {
-  return {
-    id: e.id,
-    fullName: e.fullName,
-    jobTitle: e.jobTitle,
-    department: e.departmentName,
-    departmentId: departmentIdByName(e.departmentName),
-    email: e.workEmail,
-    extension: e.extension,
-    mobile: e.mobile || '',
-    location: e.officeLocation || '',
-    status: e.isActive ? 'active' : 'inactive',
-    onlineStatus: e.isActive ? 'online' : 'offline',
-    dateAdded: (e.createdAt || nowIso()).slice(0, 10),
-  };
-}
-
-function departmentIdByName(name) {
-  return db.departments.find((d) => d.name === name)?.id || null;
-}
-
-function employeeToBackend(body) {
-  return {
-    fullName: body.fullName || body.full_name,
-    jobTitle: body.jobTitle || body.job_title,
-    departmentName:
-      body.department ||
-      db.departments.find((d) => d.id === body.department_id)?.name ||
-      '',
-    workEmail: body.email || body.work_email,
-    extension: body.extension || '',
-    mobile: body.mobile || '',
-    officeLocation: body.location || body.office_location || '',
-    isActive: body.isActive !== undefined ? body.isActive : body.status !== 'inactive',
-  };
+async function logActivity(actorEmail, action, entityType, entityId, details = null) {
+  await query(
+    `INSERT INTO activity_logs (id, user_email, action, entity_type, entity_id, details)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+    [
+      `log-${crypto.randomBytes(6).toString('hex')}`,
+      actorEmail,
+      action,
+      entityType,
+      entityId,
+      JSON.stringify(details ?? null),
+    ],
+  );
+  // Trim activity_logs to the last 500 rows so it doesn't grow unbounded.
+  await query(
+    `DELETE FROM activity_logs
+     WHERE id IN (
+       SELECT id FROM activity_logs
+       ORDER BY created_at DESC
+       OFFSET 500
+     )`,
+  );
 }
 
 // ---------------- Express app ----------------
@@ -291,24 +162,32 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
+// Async route helper so we can `throw` inside handlers and surface 500s.
+const ah = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
+
 app.get('/api/v1/health', (_req, res) => {
-  res.json({ ok: true, time: nowIso() });
+  res.json({ ok: true, time: new Date().toISOString() });
 });
 
 // ---- Auth ----
 
-app.post('/api/v1/auth/login', (req, res) => {
+app.post('/api/v1/auth/login', ah(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
-  const user = db.users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
-  if (!user || !user.isActive || !verifyPassword(password, user.passwordHash)) {
+  const { rows } = await query(
+    'SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [String(email)],
+  );
+  const user = rows[0];
+  if (!user || !user.is_active || !verifyPassword(password || '', user.password_hash)) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-  user.lastLogin = nowIso();
-  saveData(db);
-  logActivity(user.email, 'Login', 'session', user.id);
+  const now = new Date().toISOString();
+  await query('UPDATE users SET last_login = $1 WHERE id = $2', [now, user.id]);
+  await logActivity(user.email, 'Login', 'session', user.id);
 
   const token = signToken({
     sub: user.id,
@@ -321,303 +200,449 @@ app.post('/api/v1/auth/login', (req, res) => {
     refresh_token: token,
     user: publicUser(user),
   });
-});
+}));
 
-app.post('/api/v1/auth/logout', authMiddleware, (req, res) => {
-  logActivity(req.session.email, 'Logout', 'session', req.session.sub);
-  saveData(db);
+app.post('/api/v1/auth/logout', authMiddleware, ah(async (req, res) => {
+  await logActivity(req.session.email, 'Logout', 'session', req.session.sub);
   res.json({ ok: true });
-});
+}));
 
-app.get('/api/v1/auth/me', authMiddleware, (req, res) => {
-  const user = db.users.find((u) => u.id === req.session.sub);
+app.get('/api/v1/auth/me', authMiddleware, ah(async (req, res) => {
+  const { rows } = await query('SELECT * FROM users WHERE id = $1', [req.session.sub]);
+  const user = rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({
     user_id: user.id,
     email: user.email,
     role: user.role,
   });
-});
+}));
 
-app.put('/api/v1/auth/password', authMiddleware, (req, res) => {
+app.put('/api/v1/auth/password', authMiddleware, ah(async (req, res) => {
   const { old_password, new_password } = req.body || {};
-  const user = db.users.find((u) => u.id === req.session.sub);
+  const { rows } = await query('SELECT * FROM users WHERE id = $1', [req.session.sub]);
+  const user = rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!verifyPassword(old_password || '', user.passwordHash)) {
+  if (!verifyPassword(old_password || '', user.password_hash)) {
     return res.status(400).json({ error: 'Current password is incorrect' });
   }
   if (!new_password || new_password.length < 6) {
     return res.status(400).json({ error: 'New password must be at least 6 characters' });
   }
-  user.passwordHash = hashPassword(new_password);
-  saveData(db);
-  logActivity(user.email, 'Updated', 'user', user.id, { field: 'password' });
+  await query('UPDATE users SET password_hash = $1 WHERE id = $2', [
+    hashPassword(new_password),
+    user.id,
+  ]);
+  await logActivity(user.email, 'Updated', 'user', user.id, { field: 'password' });
   res.json({ ok: true });
-});
+}));
 
 // ---- Employees ----
 
-app.get('/api/v1/employees', authMiddleware, (req, res) => {
+// departmentName → departmentId (cached per request to avoid N roundtrips).
+async function buildDeptIndex() {
+  const { rows } = await query('SELECT id, name FROM departments');
+  const idx = new Map();
+  for (const d of rows) idx.set(d.name, d.id);
+  return idx;
+}
+
+function employeeToFrontend(e, deptIndex) {
+  return {
+    id: e.id,
+    fullName: e.full_name,
+    jobTitle: e.job_title,
+    department: e.department_name,
+    departmentId: deptIndex.get(e.department_name) || null,
+    email: e.work_email,
+    extension: e.extension,
+    mobile: e.mobile || '',
+    location: e.office_location || '',
+    status: e.is_active ? 'active' : 'inactive',
+    onlineStatus: e.is_active ? 'online' : 'offline',
+    dateAdded: (e.created_at || new Date().toISOString()).slice(0, 10),
+  };
+}
+
+function employeeToBackend(body, deptIndex) {
+  return {
+    full_name: body.fullName || body.full_name || '',
+    job_title: body.jobTitle || body.job_title || '',
+    department_name:
+      body.department ||
+      (body.department_id ? [...deptIndex.entries()].find(([, id]) => id === body.department_id)?.[0] : '') ||
+      '',
+    work_email: body.email || body.work_email || '',
+    extension: body.extension || '',
+    mobile: body.mobile || '',
+    office_location: body.location || body.office_location || '',
+    is_active: body.isActive !== undefined
+      ? !!body.isActive
+      : body.status !== 'inactive',
+  };
+}
+
+app.get('/api/v1/employees', authMiddleware, ah(async (req, res) => {
   const { search, department_id, is_active } = req.query;
-  let list = db.employees.slice();
+  const deptIndex = await buildDeptIndex();
+  const conds = [];
+  const args = [];
   if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      (e) =>
-        e.fullName.toLowerCase().includes(q) ||
-        (e.workEmail || '').toLowerCase().includes(q) ||
-        (e.jobTitle || '').toLowerCase().includes(q) ||
-        (e.extension || '').includes(q),
+    args.push(`%${String(search).toLowerCase()}%`);
+    const i = args.length;
+    conds.push(
+      `(LOWER(full_name) LIKE $${i} OR LOWER(work_email) LIKE $${i}` +
+        ` OR LOWER(job_title) LIKE $${i} OR extension LIKE $${i})`,
     );
   }
   if (department_id) {
-    list = list.filter((e) => departmentIdByName(e.departmentName) === department_id);
+    args.push(department_id);
+    const i = args.length;
+    conds.push(`department_name = (SELECT name FROM departments WHERE id = $${i})`);
   }
   if (is_active !== undefined) {
-    const wantActive = is_active === 'true';
-    list = list.filter((e) => e.isActive === wantActive);
+    args.push(is_active === 'true');
+    conds.push(`is_active = $${args.length}`);
   }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const { rows } = await query(
+    `SELECT * FROM employees ${where} ORDER BY full_name`,
+    args,
+  );
   res.json({
-    data: list.map(employeeToFrontend),
-    total: list.length,
+    data: rows.map((e) => employeeToFrontend(e, deptIndex)),
+    total: rows.length,
     page: 1,
-    page_size: list.length,
+    page_size: rows.length,
     total_pages: 1,
   });
-});
+}));
 
-app.get('/api/v1/employees/:id', authMiddleware, (req, res) => {
-  const emp = db.employees.find((e) => e.id === req.params.id);
+app.get('/api/v1/employees/:id', authMiddleware, ah(async (req, res) => {
+  const { rows } = await query('SELECT * FROM employees WHERE id = $1', [req.params.id]);
+  const emp = rows[0];
   if (!emp) return res.status(404).json({ error: 'Not found' });
-  res.json(employeeToFrontend(emp));
-});
+  const deptIndex = await buildDeptIndex();
+  res.json(employeeToFrontend(emp, deptIndex));
+}));
 
-app.post('/api/v1/employees', authMiddleware, adminOnly, (req, res) => {
-  const backend = employeeToBackend(req.body || {});
-  if (!backend.fullName || !backend.workEmail) {
+app.post('/api/v1/employees', authMiddleware, adminOnly, ah(async (req, res) => {
+  const deptIndex = await buildDeptIndex();
+  const b = employeeToBackend(req.body || {}, deptIndex);
+  if (!b.full_name || !b.work_email) {
     return res.status(400).json({ error: 'Name and email are required' });
   }
-  const emp = {
-    id: newId('e'),
-    ...backend,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-  db.employees.push(emp);
-  logActivity(req.session.email, 'Created', 'employee', emp.id, { name: emp.fullName });
-  saveData(db);
-  res.json(employeeToFrontend(emp));
-});
-
-app.put('/api/v1/employees/:id', authMiddleware, adminOnly, (req, res) => {
-  const idx = db.employees.findIndex((e) => e.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const backend = employeeToBackend(req.body || {});
-  db.employees[idx] = {
-    ...db.employees[idx],
-    ...backend,
-    updatedAt: nowIso(),
-  };
-  logActivity(req.session.email, 'Updated', 'employee', db.employees[idx].id, {
-    name: db.employees[idx].fullName,
+  const id = `e-${crypto.randomBytes(6).toString('hex')}`;
+  const now = new Date().toISOString();
+  const { rows } = await query(
+    `INSERT INTO employees (
+        id, full_name, job_title, department_name, work_email,
+        extension, mobile, office_location, is_active,
+        created_at, updated_at
+     )
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+     RETURNING *`,
+    [
+      id, b.full_name, b.job_title, b.department_name || null, b.work_email,
+      b.extension, b.mobile, b.office_location, b.is_active, now,
+    ],
+  );
+  await logActivity(req.session.email, 'Created', 'employee', id, {
+    name: b.full_name,
   });
-  saveData(db);
-  res.json(employeeToFrontend(db.employees[idx]));
-});
+  res.json(employeeToFrontend(rows[0], deptIndex));
+}));
 
-app.delete('/api/v1/employees/:id', authMiddleware, adminOnly, (req, res) => {
-  const idx = db.employees.findIndex((e) => e.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const removed = db.employees.splice(idx, 1)[0];
-  logActivity(req.session.email, 'Deleted', 'employee', removed.id, { name: removed.fullName });
-  saveData(db);
+app.put('/api/v1/employees/:id', authMiddleware, adminOnly, ah(async (req, res) => {
+  const deptIndex = await buildDeptIndex();
+  const b = employeeToBackend(req.body || {}, deptIndex);
+  const now = new Date().toISOString();
+  const { rows } = await query(
+    `UPDATE employees
+        SET full_name = $2,
+            job_title = $3,
+            department_name = $4,
+            work_email = $5,
+            extension = $6,
+            mobile = $7,
+            office_location = $8,
+            is_active = $9,
+            updated_at = $10
+      WHERE id = $1
+      RETURNING *`,
+    [
+      req.params.id, b.full_name, b.job_title, b.department_name || null,
+      b.work_email, b.extension, b.mobile, b.office_location, b.is_active, now,
+    ],
+  );
+  const emp = rows[0];
+  if (!emp) return res.status(404).json({ error: 'Not found' });
+  await logActivity(req.session.email, 'Updated', 'employee', emp.id, {
+    name: emp.full_name,
+  });
+  res.json(employeeToFrontend(emp, deptIndex));
+}));
+
+app.delete('/api/v1/employees/:id', authMiddleware, adminOnly, ah(async (req, res) => {
+  const { rows } = await query(
+    'DELETE FROM employees WHERE id = $1 RETURNING id, full_name',
+    [req.params.id],
+  );
+  const removed = rows[0];
+  if (!removed) return res.status(404).json({ error: 'Not found' });
+  await logActivity(req.session.email, 'Deleted', 'employee', removed.id, {
+    name: removed.full_name,
+  });
   res.json({ ok: true });
-});
+}));
 
 // ---- Departments ----
 
-app.get('/api/v1/departments', authMiddleware, (_req, res) => {
+app.get('/api/v1/departments', authMiddleware, ah(async (_req, res) => {
+  const { rows } = await query(`
+    SELECT d.id, d.name, d.color,
+           COALESCE(SUM(CASE WHEN e.is_active THEN 1 ELSE 0 END), 0)::int AS employee_count
+      FROM departments d
+      LEFT JOIN employees e ON e.department_name = d.name
+     GROUP BY d.id, d.name, d.color
+     ORDER BY d.name
+  `);
   res.json(
-    db.departments.map((d) => ({
-      ...d,
-      employeeCount: db.employees.filter((e) => e.departmentName === d.name && e.isActive).length,
+    rows.map((d) => ({
+      id: d.id,
+      name: d.name,
+      color: d.color,
+      employeeCount: d.employee_count,
     })),
   );
-});
+}));
 
-app.post('/api/v1/departments', authMiddleware, adminOnly, (req, res) => {
+app.post('/api/v1/departments', authMiddleware, adminOnly, ah(async (req, res) => {
   const name = (req.body?.name || '').trim();
   const color = req.body?.color || '#3B82F6';
   if (!name) return res.status(400).json({ error: 'Name is required' });
-  if (db.departments.some((d) => d.name.toLowerCase() === name.toLowerCase())) {
-    return res.status(400).json({ error: 'Department already exists' });
-  }
-  const dept = { id: newId('d'), name, color };
-  db.departments.push(dept);
-  logActivity(req.session.email, 'Created', 'department', dept.id, { name });
-  saveData(db);
-  res.json({ ...dept, employeeCount: 0 });
-});
+  const { rows: existing } = await query(
+    'SELECT id FROM departments WHERE LOWER(name) = LOWER($1) LIMIT 1',
+    [name],
+  );
+  if (existing.length) return res.status(400).json({ error: 'Department already exists' });
+  const id = `d-${crypto.randomBytes(6).toString('hex')}`;
+  await query(
+    'INSERT INTO departments (id, name, color) VALUES ($1, $2, $3)',
+    [id, name, color],
+  );
+  await logActivity(req.session.email, 'Created', 'department', id, { name });
+  res.json({ id, name, color, employeeCount: 0 });
+}));
 
-app.put('/api/v1/departments/:id', authMiddleware, adminOnly, (req, res) => {
-  const dept = db.departments.find((d) => d.id === req.params.id);
+app.put('/api/v1/departments/:id', authMiddleware, adminOnly, ah(async (req, res) => {
+  const { rows } = await query('SELECT * FROM departments WHERE id = $1', [req.params.id]);
+  const dept = rows[0];
   if (!dept) return res.status(404).json({ error: 'Not found' });
   if (req.body?.name) dept.name = String(req.body.name).trim();
   if (req.body?.color) dept.color = req.body.color;
-  dept.updatedAt = nowIso();
-  logActivity(req.session.email, 'Updated', 'department', dept.id, { name: dept.name });
-  saveData(db);
-  res.json({ ...dept, employeeCount: db.employees.filter((e) => e.departmentName === dept.name && e.isActive).length });
-});
+  await query(
+    'UPDATE departments SET name = $1, color = $2 WHERE id = $3',
+    [dept.name, dept.color, dept.id],
+  );
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*)::int AS n FROM employees
+       WHERE department_name = $1 AND is_active = TRUE`,
+    [dept.name],
+  );
+  await logActivity(req.session.email, 'Updated', 'department', dept.id, { name: dept.name });
+  res.json({ id: dept.id, name: dept.name, color: dept.color, employeeCount: countRows[0].n });
+}));
 
-app.delete('/api/v1/departments/:id', authMiddleware, adminOnly, (req, res) => {
-  const idx = db.departments.findIndex((d) => d.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const [removed] = db.departments.splice(idx, 1);
-  // null out department on employees
-  db.employees.forEach((e) => {
-    if (e.departmentName === removed.name) e.departmentName = '';
+app.delete('/api/v1/departments/:id', authMiddleware, adminOnly, ah(async (req, res) => {
+  const { rows } = await query(
+    'DELETE FROM departments WHERE id = $1 RETURNING id, name',
+    [req.params.id],
+  );
+  const removed = rows[0];
+  if (!removed) return res.status(404).json({ error: 'Not found' });
+  // Null out department on employees that referenced this one.
+  await query('UPDATE employees SET department_name = NULL WHERE department_name = $1', [
+    removed.name,
+  ]);
+  await logActivity(req.session.email, 'Deleted', 'department', removed.id, {
+    name: removed.name,
   });
-  logActivity(req.session.email, 'Deleted', 'department', removed.id, { name: removed.name });
-  saveData(db);
   res.json({ ok: true });
-});
+}));
 
 // ---- Admin: users ----
 
-app.get('/api/v1/admin/users', authMiddleware, adminOnly, (_req, res) => {
-  res.json(
-    db.users.map((u) => ({
-      ...publicUser(u),
-      createdAt: u.createdAt,
-      updatedAt: u.lastLogin,
-    })),
+app.get('/api/v1/admin/users', authMiddleware, adminOnly, ah(async (_req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM users ORDER BY created_at DESC',
   );
-});
+  res.json(rows.map(publicUser));
+}));
 
-app.post('/api/v1/admin/users/invite', authMiddleware, adminOnly, (req, res) => {
+app.post('/api/v1/admin/users/invite', authMiddleware, adminOnly, ah(async (req, res) => {
   const { email, role, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-    return res.status(400).json({ error: 'User already exists' });
-  }
-  const user = {
-    id: newId('u'),
-    email,
-    name: email.split('@')[0],
-    role: role === 'admin' ? 'admin' : 'user',
-    passwordHash: hashPassword(password),
-    isActive: true,
-    lastLogin: null,
-    createdAt: nowIso(),
-  };
-  db.users.push(user);
-  logActivity(req.session.email, 'Created', 'user', user.id, { email });
-  saveData(db);
-  res.json(publicUser(user));
-});
+  const { rows: existing } = await query(
+    'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [email],
+  );
+  if (existing.length) return res.status(400).json({ error: 'User already exists' });
+  const id = `u-${crypto.randomBytes(6).toString('hex')}`;
+  const { rows } = await query(
+    `INSERT INTO users (id, email, name, role, password_hash, is_active)
+     VALUES ($1, $2, $3, $4, $5, TRUE)
+     RETURNING *`,
+    [
+      id,
+      email,
+      String(email).split('@')[0],
+      role === 'admin' ? 'admin' : 'user',
+      hashPassword(password),
+    ],
+  );
+  await logActivity(req.session.email, 'Created', 'user', id, { email });
+  res.json(publicUser(rows[0]));
+}));
 
-app.patch('/api/v1/admin/users/:id/role', authMiddleware, adminOnly, (req, res) => {
-  const user = db.users.find((u) => u.id === req.params.id);
-  if (!user) return res.status(404).json({ error: 'Not found' });
+app.patch('/api/v1/admin/users/:id/role', authMiddleware, adminOnly, ah(async (req, res) => {
   const role = req.body?.role === 'admin' ? 'admin' : 'user';
-  user.role = role;
-  logActivity(req.session.email, 'Updated', 'user', user.id, { field: 'role', value: role });
-  saveData(db);
-  res.json(publicUser(user));
-});
-
-app.patch('/api/v1/admin/users/:id/deactivate', authMiddleware, adminOnly, (req, res) => {
-  const user = db.users.find((u) => u.id === req.params.id);
+  const { rows } = await query(
+    'UPDATE users SET role = $1 WHERE id = $2 RETURNING *',
+    [role, req.params.id],
+  );
+  const user = rows[0];
   if (!user) return res.status(404).json({ error: 'Not found' });
-  user.isActive = false;
-  logActivity(req.session.email, 'Deactivated', 'user', user.id);
-  saveData(db);
+  await logActivity(req.session.email, 'Updated', 'user', user.id, {
+    field: 'role',
+    value: role,
+  });
   res.json(publicUser(user));
-});
+}));
 
-app.patch('/api/v1/admin/users/:id/password', authMiddleware, adminOnly, (req, res) => {
-  const user = db.users.find((u) => u.id === req.params.id);
+app.patch('/api/v1/admin/users/:id/deactivate', authMiddleware, adminOnly, ah(async (req, res) => {
+  const { rows } = await query(
+    'UPDATE users SET is_active = FALSE WHERE id = $1 RETURNING *',
+    [req.params.id],
+  );
+  const user = rows[0];
   if (!user) return res.status(404).json({ error: 'Not found' });
+  await logActivity(req.session.email, 'Deactivated', 'user', user.id);
+  res.json(publicUser(user));
+}));
+
+app.patch('/api/v1/admin/users/:id/password', authMiddleware, adminOnly, ah(async (req, res) => {
   if (!req.body?.password || req.body.password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
-  user.passwordHash = hashPassword(req.body.password);
-  logActivity(req.session.email, 'Updated', 'user', user.id, { field: 'password' });
-  saveData(db);
+  const { rows } = await query(
+    'UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING *',
+    [hashPassword(req.body.password), req.params.id],
+  );
+  const user = rows[0];
+  if (!user) return res.status(404).json({ error: 'Not found' });
+  await logActivity(req.session.email, 'Updated', 'user', user.id, { field: 'password' });
   res.json(publicUser(user));
-});
+}));
 
-app.get('/api/v1/admin/session-settings', authMiddleware, adminOnly, (_req, res) => {
+app.get('/api/v1/admin/session-settings', authMiddleware, adminOnly, ah(async (_req, res) => {
+  const payload = await getSessionSettings();
   res.json({
     id: 'session-settings',
-    inactivity_timeout_minutes: db.sessionSettings.inactivityTimeoutMinutes,
-    logout_on_browser_close: db.sessionSettings.logoutOnBrowserClose,
+    inactivity_timeout_minutes: payload.inactivityTimeoutMinutes,
+    logout_on_browser_close: payload.logoutOnBrowserClose,
   });
-});
+}));
 
-app.patch('/api/v1/admin/session-settings', authMiddleware, adminOnly, (req, res) => {
+app.patch('/api/v1/admin/session-settings', authMiddleware, adminOnly, ah(async (req, res) => {
+  const payload = await getSessionSettings();
   if (typeof req.body?.inactivity_timeout_minutes === 'number') {
-    db.sessionSettings.inactivityTimeoutMinutes = req.body.inactivity_timeout_minutes;
+    payload.inactivityTimeoutMinutes = req.body.inactivity_timeout_minutes;
   }
   if (typeof req.body?.logout_on_browser_close === 'boolean') {
-    db.sessionSettings.logoutOnBrowserClose = req.body.logout_on_browser_close;
+    payload.logoutOnBrowserClose = req.body.logout_on_browser_close;
   }
-  saveData(db);
+  await query(
+    `INSERT INTO session_settings (id, payload, updated_at)
+     VALUES (1, $1::jsonb, NOW())
+     ON CONFLICT (id) DO UPDATE
+       SET payload = EXCLUDED.payload, updated_at = NOW()`,
+    [JSON.stringify(payload)],
+  );
   res.json({
     id: 'session-settings',
-    inactivity_timeout_minutes: db.sessionSettings.inactivityTimeoutMinutes,
-    logout_on_browser_close: db.sessionSettings.logoutOnBrowserClose,
+    inactivity_timeout_minutes: payload.inactivityTimeoutMinutes,
+    logout_on_browser_close: payload.logoutOnBrowserClose,
   });
-});
+}));
 
-app.get('/api/v1/admin/dashboard', authMiddleware, adminOnly, (_req, res) => {
-  const recent = db.activityLogs.filter((l) => {
-    const t = new Date(l.createdAt).getTime();
-    return Date.now() - t < 7 * 24 * 60 * 60 * 1000;
-  }).length;
+async function getSessionSettings() {
+  const { rows } = await query('SELECT payload FROM session_settings WHERE id = 1');
+  if (!rows.length) {
+    return { ...DEFAULT_SESSION_SETTINGS };
+  }
+  return { ...DEFAULT_SESSION_SETTINGS, ...rows[0].payload };
+}
+
+app.get('/api/v1/admin/dashboard', authMiddleware, adminOnly, ah(async (_req, res) => {
+  const [{ rows: empRows }, { rows: deptRows }, { rows: userRows }, { rows: actRows }] =
+    await Promise.all([
+      query('SELECT COUNT(*)::int AS n FROM employees'),
+      query('SELECT COUNT(*)::int AS n FROM departments'),
+      query('SELECT COUNT(*)::int AS n FROM users WHERE is_active = TRUE'),
+      query(
+        `SELECT COUNT(*)::int AS n FROM activity_logs
+          WHERE created_at > NOW() - INTERVAL '7 days'`,
+      ),
+    ]);
   res.json({
-    total_employees: db.employees.length,
-    total_departments: db.departments.length,
-    active_users: db.users.filter((u) => u.isActive).length,
-    recent_activity: recent,
+    total_employees: empRows[0].n,
+    total_departments: deptRows[0].n,
+    active_users: userRows[0].n,
+    recent_activity: actRows[0].n,
   });
-});
+}));
 
 // ---- Audit log ----
 
-app.get('/api/v1/admin/audit-logs', authMiddleware, adminOnly, (_req, res) => {
+app.get('/api/v1/admin/audit-logs', authMiddleware, adminOnly, ah(async (_req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 500',
+  );
   res.json(
-    db.activityLogs.map((l) => ({
+    rows.map((l) => ({
       id: l.id,
       user_id: '',
-      user_email: l.userEmail,
+      user_email: l.user_email,
       action: l.action,
-      entity_type: l.entityType,
-      entity_id: l.entityId,
+      entity_type: l.entity_type,
+      entity_id: l.entity_id,
       details: l.details,
       ip_address: '',
-      created_at: l.createdAt,
+      created_at: l.created_at,
     })),
   );
-});
+}));
 
-app.get('/api/v1/admin/audit-logs/export', authMiddleware, adminOnly, (_req, res) => {
+app.get('/api/v1/admin/audit-logs/export', authMiddleware, adminOnly, ah(async (_req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 500',
+  );
   const lines = ['timestamp,actor,action,entity,target'];
-  for (const l of db.activityLogs) {
-    const target = l.details?.name || l.details?.email || l.entityId;
+  for (const l of rows) {
+    const target = l.details?.name || l.details?.email || l.entity_id;
     lines.push(
       [
-        l.createdAt,
-        l.userEmail,
+        l.created_at,
+        l.user_email,
         l.action,
-        l.entityType,
+        l.entity_type,
         JSON.stringify(target || ''),
       ].join(','),
     );
   }
   res.type('text/csv').send(lines.join('\n'));
-});
+}));
 
 // ---- Sync (no-op for LAN; just log attempts) ----
 
@@ -628,29 +653,39 @@ app.get('/api/v1/admin/sync/settings', authMiddleware, adminOnly, (_req, res) =>
   ]);
 });
 
-app.patch('/api/v1/admin/sync/settings/:type', authMiddleware, adminOnly, (req, res) => {
-  res.json({ ok: true, enabled: !!req.body?.is_enabled });
+app.patch('/api/v1/admin/sync/settings/:type', authMiddleware, adminOnly, (_req, res) => {
+  res.json({ ok: true, enabled: !!_req.body?.is_enabled });
 });
 
-app.post('/api/v1/admin/sync/run/:type', authMiddleware, adminOnly, (req, res) => {
-  const log = {
-    id: newId('sync'),
-    sync_type: req.params.type,
-    status: 'success',
-    records_affected: 0,
-    error_message: null,
-    started_at: nowIso(),
-    completed_at: nowIso(),
-  };
-  db.syncLogs.unshift(log);
-  logActivity(req.session.email, 'Updated', 'sync', log.id, { type: req.params.type });
-  saveData(db);
-  res.json(log);
-});
+app.post('/api/v1/admin/sync/run/:type', authMiddleware, adminOnly, ah(async (req, res) => {
+  const id = `sync-${crypto.randomBytes(6).toString('hex')}`;
+  const now = new Date().toISOString();
+  const { rows } = await query(
+    `INSERT INTO sync_logs (id, sync_type, status, records_affected, error_message, started_at, completed_at)
+     VALUES ($1, $2, 'success', 0, NULL, $3, $3)
+     RETURNING *`,
+    [id, req.params.type, now],
+  );
+  const log = rows[0];
+  await logActivity(req.session.email, 'Updated', 'sync', log.id, { type: req.params.type });
+  res.json({
+    id: log.id,
+    sync_type: log.sync_type,
+    status: log.status,
+    records_affected: log.records_affected,
+    error_message: log.error_message,
+    started_at: log.started_at,
+    completed_at: log.completed_at,
+    created_at: log.started_at,
+  });
+}));
 
-app.get('/api/v1/admin/sync/logs', authMiddleware, adminOnly, (_req, res) => {
+app.get('/api/v1/admin/sync/logs', authMiddleware, adminOnly, ah(async (_req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM sync_logs ORDER BY started_at DESC LIMIT 100',
+  );
   res.json(
-    db.syncLogs.map((s) => ({
+    rows.map((s) => ({
       id: s.id,
       sync_type: s.sync_type,
       status: s.status,
@@ -661,14 +696,9 @@ app.get('/api/v1/admin/sync/logs', authMiddleware, adminOnly, (_req, res) => {
       created_at: s.started_at,
     })),
   );
-});
+}));
 
-// ---------------- Health + static SPA ----------------
-
-// Lightweight unauthenticated probe used by the Docker healthcheck and ops.
-app.get('/api/v1/health', (_req, res) => {
-  res.json({ ok: true, ts: new Date().toISOString() });
-});
+// ---------------- Static SPA ----------------
 
 // In production we serve the built React app from the same process so a
 // single container can serve both the UI and the API. In dev this is skipped
@@ -685,11 +715,85 @@ if (STATIC_DIR && fs.existsSync(STATIC_DIR)) {
   console.log(`Serving SPA from ${STATIC_DIR}`);
 }
 
-// ---------------- Start ----------------
+// Centralised error handler — anything `throw`n in an `ah(...)` handler lands
+// here. Without this Express 4 returns an empty 500 with no body.
+app.use((err, _req, res, _next) => {
+  console.error('[server error]', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
 
-app.listen(PORT, HOST, () => {
+// ---------------- Boot ----------------
+
+async function bootstrap() {
+  await initSchema();
+
+  // First-boot seed: create the default admin user if the table is empty.
+  const { rows: userCount } = await query('SELECT COUNT(*)::int AS n FROM users');
+  if (userCount[0].n === 0) {
+    const adminId = 'u-admin';
+    await query(
+      `INSERT INTO users (id, email, name, role, password_hash, is_active)
+       VALUES ($1, $2, $3, 'admin', $4, TRUE)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        adminId,
+        'admin@corp.com',
+        'Admin User',
+        hashPassword('admin123'),
+      ],
+    );
+    console.log('Seeded default admin user (admin@corp.com / admin123)');
+  }
+
+  // Seed default departments if empty.
+  const { rows: deptCount } = await query('SELECT COUNT(*)::int AS n FROM departments');
+  if (deptCount[0].n === 0) {
+    const seed = [
+      ['d-eng', 'Engineering', '#3B82F6'],
+      ['d-sales', 'Sales', '#F59E0B'],
+      ['d-hr', 'HR', '#EC4899'],
+      ['d-fin', 'Finance', '#10B981'],
+      ['d-it', 'IT', '#8B5CF6'],
+      ['d-ops', 'Operations', '#F97316'],
+    ];
+    for (const [id, name, color] of seed) {
+      await query(
+        'INSERT INTO departments (id, name, color) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [id, name, color],
+      );
+    }
+    console.log('Seeded default departments');
+  }
+
+  // Ensure session_settings singleton exists.
+  await query(
+    `INSERT INTO session_settings (id, payload, updated_at)
+     VALUES (1, $1::jsonb, NOW())
+     ON CONFLICT (id) DO NOTHING`,
+    [JSON.stringify(DEFAULT_SESSION_SETTINGS)],
+  );
+
+  // Resolve session secret: env > settings KV > generate.
+  if (!SESSION_SECRET) {
+    const fromDb = await getSetting('sessionSecret');
+    if (typeof fromDb === 'string' && fromDb.length > 0) {
+      SESSION_SECRET = fromDb;
+    } else {
+      SESSION_SECRET = generateSecret();
+      await setSetting('sessionSecret', SESSION_SECRET);
+      console.log('Generated and persisted a new session secret');
+    }
+  }
+}
+
+app.listen(PORT, HOST, async () => {
+  try {
+    await bootstrap();
+  } catch (err) {
+    console.error('Bootstrap failed:', err);
+    process.exit(1);
+  }
   console.log(`ContactHub server listening on http://${HOST}:${PORT}`);
-  console.log(`Data file: ${DATA_FILE}`);
   console.log('Seeded admin: admin@corp.com / admin123');
   console.log('LAN URLs from this machine:');
   for (const iface of Object.values(os.networkInterfaces()).flat()) {
@@ -698,3 +802,12 @@ app.listen(PORT, HOST, () => {
     }
   }
 });
+
+// Clean shutdown so pg closes idle sockets and Docker restart is graceful.
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, async () => {
+    console.log(`Received ${sig}, shutting down…`);
+    try { await pool.end(); } catch { /* ignore */ }
+    process.exit(0);
+  });
+}
