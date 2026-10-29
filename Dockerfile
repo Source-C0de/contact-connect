@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # ---------- Stage 1: build the React app + install server deps ----------
-FROM node:20-alpine AS builder
+FROM node:24.22.1-alpine AS builder
+
 
 WORKDIR /app
 
@@ -23,7 +24,7 @@ COPY . .
 RUN npm run build
 
 # ---------- Stage 2: minimal runtime image ----------
-FROM node:20-alpine AS runner
+FROM node:24.22.1-alpine AS runner
 
 ENV NODE_ENV=production \
     PORT=8090 \

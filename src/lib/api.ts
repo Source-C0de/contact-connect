@@ -13,17 +13,12 @@ export interface PaginatedResponse<T> {
   page_size: number;
 }
 
-// In production we serve the SPA and the API from the same Node process, so
+// The base URL is resolved in one place (src/lib/apiBase.ts) so that the API
+// client, the session manager and the audit exporter can never drift apart.
+// In production the SPA and the API are served by the same Node process, so
 // the API lives on the SAME host and port as the page (no port suffix). In
-// local dev (Vite on :5173) the LAN server runs on :8080 and we fall back to
-// that. If VITE_API_URL is set at build time it wins, so ops can still point
-// the bundle at a remote API host (e.g. when the SPA is hosted behind nginx).
-const DEV_API_PORT = '8080';
-const API_BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  (import.meta.env.PROD
-    ? `${window.location.protocol}//${window.location.host}/api/v1`
-    : `${window.location.protocol}//${window.location.hostname}:${DEV_API_PORT}/api/v1`);
+// local dev (Vite on :5173) the LAN server runs on its own port.
+import { API_BASE_URL } from './apiBase';
 
 const LS_BASE = 'contacthub_api_v1';
 const LS_TOKEN_KEY = 'contacthub_access_token';

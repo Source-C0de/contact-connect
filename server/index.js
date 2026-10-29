@@ -10,6 +10,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Side-effect import: loads the repo-root `.env` into process.env BEFORE
+// `db.js` captures DATABASE_URL. Must stay above the db.js import.
+import './env.js';
 import { initSchema, pool, query, withTx, getSetting, setSetting } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -120,6 +123,40 @@ function adminOnly(req, res, next) {
 // The DB returns snake_case rows; the HTTP contract is camelCase. These
 // helpers normalize once at the edge so route handlers stay readable.
 
+/**
+ * Normalize a Postgres timestamp to an ISO-8601 string.
+ *
+ * The `pg` driver parses `timestamp with time zone` columns into JS `Date`
+ * objects. `Date` has no `.slice()`, so calling string methods on a raw
+ * column throws `... .slice is not a function`. Passing a `Date` straight
+ * to `res.json()` happens to work (JSON.stringify calls toJSON), but the
+ * value differs between ISO strings and Date objects depending on the code
+ * path — so we normalize every timestamp explicitly, in one place.
+ *
+ * Accepts: Date | ISO string | epoch number | null/undefined.
+ */
+function toIso(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? value : d.toISOString();
+  }
+  return null;
+}
+
+/** Normalize a timestamp to a plain `YYYY-MM-DD` date string. */
+function toIsoDate(value) {
+  const iso = toIso(value);
+  return iso ? iso.slice(0, 10) : null;
+}
+
 function publicUser(u) {
   return {
     id: u.id,
@@ -127,8 +164,8 @@ function publicUser(u) {
     name: u.name,
     role: u.role,
     isActive: u.is_active,
-    lastLogin: u.last_login,
-    createdAt: u.created_at,
+    lastLogin: toIso(u.last_login),
+    createdAt: toIso(u.created_at),
   };
 }
 
@@ -260,7 +297,7 @@ function employeeToFrontend(e, deptIndex) {
     location: e.office_location || '',
     status: e.is_active ? 'active' : 'inactive',
     onlineStatus: e.is_active ? 'online' : 'offline',
-    dateAdded: (e.created_at || new Date().toISOString()).slice(0, 10),
+    dateAdded: toIsoDate(e.created_at) || toIsoDate(new Date()),
   };
 }
 
@@ -619,7 +656,7 @@ app.get('/api/v1/admin/audit-logs', authMiddleware, adminOnly, ah(async (_req, r
       entity_id: l.entity_id,
       details: l.details,
       ip_address: '',
-      created_at: l.created_at,
+      created_at: toIso(l.created_at),
     })),
   );
 }));
@@ -633,7 +670,7 @@ app.get('/api/v1/admin/audit-logs/export', authMiddleware, adminOnly, ah(async (
     const target = l.details?.name || l.details?.email || l.entity_id;
     lines.push(
       [
-        l.created_at,
+        toIso(l.created_at),
         l.user_email,
         l.action,
         l.entity_type,
@@ -674,9 +711,9 @@ app.post('/api/v1/admin/sync/run/:type', authMiddleware, adminOnly, ah(async (re
     status: log.status,
     records_affected: log.records_affected,
     error_message: log.error_message,
-    started_at: log.started_at,
-    completed_at: log.completed_at,
-    created_at: log.started_at,
+    started_at: toIso(log.started_at),
+    completed_at: toIso(log.completed_at),
+    created_at: toIso(log.started_at),
   });
 }));
 
@@ -691,9 +728,9 @@ app.get('/api/v1/admin/sync/logs', authMiddleware, adminOnly, ah(async (_req, re
       status: s.status,
       records_affected: s.records_affected,
       error_message: s.error_message,
-      started_at: s.started_at,
-      completed_at: s.completed_at,
-      created_at: s.started_at,
+      started_at: toIso(s.started_at),
+      completed_at: toIso(s.completed_at),
+      created_at: toIso(s.started_at),
     })),
   );
 }));

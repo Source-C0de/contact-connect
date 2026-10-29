@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { authService } from '@/services/authService';
 import { adminService } from '@/services/adminService';
+import { API_BASE_URL } from '@/lib/apiBase';
 
 /**
  * useSessionManager — enforces admin-configured session policy.
@@ -69,7 +70,7 @@ export function useSessionManager() {
       if (!refreshToken) return;
 
       navigator.sendBeacon(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'}/auth/logout`,
+        `${API_BASE_URL}/auth/logout`,
         JSON.stringify({ refresh_token: refreshToken })
       );
       localStorage.removeItem('contacthub_access_token');

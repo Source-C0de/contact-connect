@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { API_BASE_URL } from '@/lib/apiBase';
 import type { ActivityLog, ActionType } from '@/data/mockData';
 
 interface BackendAuditLog {
@@ -33,7 +34,7 @@ export const auditService = {
   },
 
   async exportLogs(): Promise<string> {
-    const url = `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'}/admin/audit-logs/export`;
+    const url = `${API_BASE_URL}/admin/audit-logs/export`;
     const token = localStorage.getItem('contacthub_access_token');
     
     const response = await fetch(url, {
