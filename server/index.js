@@ -780,6 +780,8 @@ async function bootstrap() {
       ],
     );
     console.log('Seeded default admin user (admin@corp.com / admin123)');
+  } else {
+    console.log(`Users table not empty (${userCount[0].n} row(s)) — skipping admin seed.`);
   }
 
   // Seed default departments if empty.
@@ -831,7 +833,6 @@ app.listen(PORT, HOST, async () => {
     process.exit(1);
   }
   console.log(`ContactHub server listening on http://${HOST}:${PORT}`);
-  console.log('Seeded admin: admin@corp.com / admin123');
   console.log('LAN URLs from this machine:');
   for (const iface of Object.values(os.networkInterfaces()).flat()) {
     if (iface && iface.family === 'IPv4' && !iface.internal) {
