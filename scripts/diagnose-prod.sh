@@ -71,7 +71,44 @@ printf 'login (admin123): %s\n' \
 echo "--- verbose probe of /api/v1/health ---"
 curl -sv "${BASE}/api/v1/health" 2>&1 | grep -vE '^\{|^\s*$' | tail -12
 
-hr "5b. Which ports are actually listening?"
+hr "5a. FULL bootstrap error (untruncated)"
+if [ "$DOCKER_OK" -eq 1 ]; then
+  docker compose logs app 2>&1 \
+    | grep -o '"event":"bootstrap.failed".*' | tail -3 \
+    | sed 's/,"timestamp[^}]*//' \
+    || echo "(no bootstrap.failed found)"
+  echo "--- also try unfiltered (no line wrapping) ---"
+  docker compose logs --no-log-prefix --tail=200 app 2>&1 \
+    | grep 'bootstrap.failed' | tail -3
+else
+  echo "(skipped: no Docker access)"
+fi
+
+hr "5b. Database connectivity from inside the app container"
+if [ "$DOCKER_OK" -eq 1 ]; then
+  echo "--- can the app container resolve and reach the db service? ---"
+  docker compose exec -T app node --input-type=module -e "
+    import { query, pool } from './server/db.js';
+    try {
+      const r = await query('SELECT 1 AS ok');
+      console.log('DB REACHABLE:', JSON.stringify(r.rows));
+    } catch (e) {
+      console.log('DB ERROR:', e.message);
+      console.log('CODE:', e.code || '(none)');
+    }
+    await pool.end();
+  " 2>&1
+  echo "--- DATABASE_URL as seen by the app container ---"
+  docker compose exec -T app sh -c 'echo "$DATABASE_URL"' 2>&1
+  echo "--- db container health ---"
+  docker compose ps db 2>&1
+  echo "--- postgres accepting connections? ---"
+  docker compose exec -T db pg_isready -U contacthub -d contacthub 2>&1
+else
+  echo "(skipped: no Docker access)"
+fi
+
+hr "5c. Which ports are actually listening?"
 if command -v ss >/dev/null 2>&1; then
   ss -tlnp 2>/dev/null | grep -E '8090|8123|5432|80 |443 ' || echo "(nothing listening on 8090/8123/5432/80/443)"
   echo "--- all listening ports ---"

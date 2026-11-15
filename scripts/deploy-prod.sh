@@ -104,6 +104,19 @@ if [ "$DOCKER_OK" -eq 1 ]; then
   if [ -n "$PUBLISHED" ] && [ "${PUBLISHED##*:}" != "$APP_PORT" ]; then
     warn "Published port (${PUBLISHED##*:}) differs from APP_HOST_PORT (${APP_PORT})"
   fi
+
+  # `bootstrap.failed` in the app log means the API could not start because
+  # it could not reach PostgreSQL. Check that directly.
+  if docker compose ps --status running --services 2>/dev/null | grep -q '^app$'; then
+    DBERR=$(docker compose logs --no-log-prefix --tail=100 app 2>&1 \
+            | grep -m1 'bootstrap.failed' || true)
+    if [ -n "$DBERR" ]; then
+      bad "app log reports bootstrap.failed"
+      echo "      $DBERR"
+    else
+      ok "no bootstrap.failed in the app log"
+    fi
+  fi
 fi
 
 # --------------------------------------------------------------------------
@@ -129,6 +142,22 @@ else
     echo "      ${BOLD}The containers are probably not running.${OFF}"
     echo "      Run: docker compose up -d --build   (as a user with Docker access)"
     echo "      Then: docker compose logs app"
+  fi
+fi
+
+# --------------------------------------------------------------------------
+# 5b. Database reachability (the cause of 'bootstrap.failed')
+# --------------------------------------------------------------------------
+if [ "$DOCKER_OK" -eq 1 ]; then
+  if docker compose ps --status running --services 2>/dev/null | grep -q '^db$'; then
+    if docker compose exec -T db pg_isready -U contacthub -d contacthub >/dev/null 2>&1; then
+      ok "PostgreSQL is accepting connections"
+    else
+      bad "PostgreSQL is NOT accepting connections"
+      docker compose exec -T db pg_isready -U contacthub -d contacthub 2>&1
+    fi
+  else
+    bad "db container is not running — the app cannot bootstrap without it"
   fi
 fi
 
