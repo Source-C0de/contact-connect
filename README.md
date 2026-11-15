@@ -614,17 +614,26 @@ then confirm with `docker compose ps` and the health check from
 ## 11. Production troubleshooting
 
 If the frontend doesn't load or login fails on the server, run the bundled
-diagnostic:
+helper:
 
 ```bash
 cd /opt/contacthub
-bash scripts/diagnose-prod.sh
+bash scripts/deploy-prod.sh check     # diagnose only, changes nothing
+bash scripts/deploy-prod.sh fix      # apply the safe, idempotent fixes
 ```
 
-It is read-only and reports container status, bootstrap/seeding events, the
-last auth failures, HTTP status codes for the health/SPA/login endpoints, the
-password-hash format of every user, and whether the API URL was baked into
-the built bundle.
+It checks Docker access, `.env` presence, host port availability, container
+state, the published port, and probes the health endpoint. The `fix` mode only
+creates `.env` from `.env.example` if it's missing and starts the app + db
+containers — it never deletes volumes, touches the database, or changes a
+password.
+
+For a deeper read-only report (container logs, bootstrap events, database
+contents, password-hash formats), use:
+
+```bash
+bash scripts/diagnose-prod.sh
+```
 
 See [Troubleshooting](#troubleshooting) for the symptom → cause → fix table
 and the admin password reset procedure.
