@@ -45,12 +45,26 @@ export const authService = {
       user = mapBackendUser(response.user);
     } catch (err) {
       // LAN server unreachable -> fall back to per-browser localStorage store.
-      const local = await api.__local.request<
-        { token: string; user: BackendUser }
-      >('POST', '/auth/login', { email, password });
-      accessToken = local.token;
-      refreshToken = local.token;
-      user = mapBackendUser(local.user);
+      //
+      // Only fall back when the failure was a CONNECTION problem. A 401 from
+      // the server is a genuine "wrong password" and must not be retried
+      // against the local mirror, otherwise the user sees a misleading
+      // result and the real reason is lost.
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 401) throw err;
+
+      try {
+        const local = await api.__local.request<
+          { token: string; user: BackendUser }
+        >('POST', '/auth/login', { email, password });
+        accessToken = local.token;
+        refreshToken = local.token;
+        user = mapBackendUser(local.user);
+      } catch {
+        // The local mirror is unavailable/disabled — surface the ORIGINAL
+        // error so the UI can explain what actually went wrong.
+        throw err;
+      }
     }
 
     localStorage.setItem('contacthub_access_token', accessToken);

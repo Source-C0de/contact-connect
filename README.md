@@ -46,7 +46,8 @@ conflict.
 - [8. Day-to-day operations](#8-day-to-day-operations)
 - [9. Backups](#9-backups)
 - [10. Upgrades](#10-upgrades)
-- [11. Uninstall](#11-uninstall)
+- [11. Production troubleshooting](#11-production-troubleshooting)
+- [12. Uninstall](#12-uninstall)
 
 **Reference**
 - [Configuration reference](#configuration-reference)
@@ -610,7 +611,27 @@ then confirm with `docker compose ps` and the health check from
 
 ---
 
-## 11. Uninstall
+## 11. Production troubleshooting
+
+If the frontend doesn't load or login fails on the server, run the bundled
+diagnostic:
+
+```bash
+cd /opt/contacthub
+bash scripts/diagnose-prod.sh
+```
+
+It is read-only and reports container status, bootstrap/seeding events, the
+last auth failures, HTTP status codes for the health/SPA/login endpoints, the
+password-hash format of every user, and whether the API URL was baked into
+the built bundle.
+
+See [Troubleshooting](#troubleshooting) for the symptom → cause → fix table
+and the admin password reset procedure.
+
+---
+
+## 12. Uninstall
 
 ```bash
 cd /opt/contacthub
@@ -657,6 +678,50 @@ Resolved in exactly one place — `src/lib/apiBase.ts`:
 ---
 
 # Troubleshooting
+
+**The frontend doesn't load, or login says "password authentication failed"**
+
+Start with the bundled diagnostic on the server:
+
+```bash
+cd /opt/contacthub
+bash scripts/diagnose-prod.sh
+```
+
+It is read-only and reports container status, bootstrap/seeding events, the
+last auth failures, HTTP status codes for the health/SPA/login endpoints, the
+password-hash format of every user, and whether the API URL was baked into
+the built bundle.
+
+The most common causes, in the order they actually occur:
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Login always fails; log says `auth.login_failed` reason `bad_password` | The password is stored in the legacy bare-SHA256 format from the old `data.json` | Sign in with the original password — the server rehashes it to PBKDF2 on the first success. Or reset it (see below). |
+| Container shows `Restarting` instead of `Up (healthy)` | The API process exited during boot | `docker compose logs app` and look for `bootstrap.failed` |
+| Login works locally but not from another PC | The firewall is blocking the port | `sudo ufw allow 8090/tcp` — see [Allow the port through the firewall](#allow-the-port-through-the-firewall) |
+| The browser shows its own password prompt instead of the app | A reverse proxy in front of the app is requesting HTTP Basic Auth | Remove the `auth_basic` directive from the proxy, or scope it to `/api/` only |
+| The page loads but stays blank / spins forever | The API URL baked into the bundle points at the wrong host | Leave `VITE_API_URL` unset at build time so the app uses the page's own origin, then rebuild |
+| Nobody can sign in and no admin exists in the database | The database was populated by a partial import | The server now seeds an admin automatically on boot — check the log for `bootstrap.admin_seeded` with `reason: no_admin_present` |
+
+**Reset the admin password**
+
+```bash
+docker compose exec -T app node --input-type=module -e "
+import { hashPassword } from './server/auth.js';
+import { query, pool } from './server/db.js';
+const hash = hashPassword('yournewpassword');
+const { rows } = await query(
+  'UPDATE users SET password_hash = \$1 WHERE LOWER(email) = LOWER(\$2) RETURNING id, email',
+  [hash, 'admin@corp.com'],
+);
+console.log('updated:', JSON.stringify(rows));
+await pool.end();
+"
+```
+
+Use the app's own `hashPassword()` — a plain `sha256` one-liner produces a
+value the server will reject.
 
 **`ports are not available` / `EACCES: permission denied` (Windows only)**
 — the port is inside the Windows excluded range 8009–8108. Set

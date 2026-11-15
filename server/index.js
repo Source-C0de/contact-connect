@@ -976,13 +976,24 @@ export async function bootstrap() {
   await initSchema();
 
   // First-boot seed: create the default admin user if the table is empty.
+  //
+  // We also seed when the table has rows but NONE of them is an admin. That
+  // state happens in production when the database was populated by a partial
+  // import (e.g. only employees, or a migration that skipped the users
+  // table). Without an admin nobody can sign in at all, and the only way out
+  // is to edit the database by hand.
   const { rows: userCount } = await query('SELECT COUNT(*)::int AS n FROM users');
-  if (userCount[0].n === 0) {
+  const { rows: adminCount } = await query(
+    "SELECT COUNT(*)::int AS n FROM users WHERE role = 'admin'",
+  );
+  if (userCount[0].n === 0 || adminCount[0].n === 0) {
     const adminId = 'u-admin';
     await query(
       `INSERT INTO users (id, email, name, role, password_hash, is_active)
        VALUES ($1, $2, $3, 'admin', $4, TRUE)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (email) DO UPDATE
+         SET role = 'admin',
+             is_active = TRUE`,
       [
         adminId,
         'admin@corp.com',
@@ -990,7 +1001,16 @@ export async function bootstrap() {
         hashPassword('admin123'),
       ],
     );
-    logger.info('bootstrap.admin_seeded', { count: 1 });
+    // On conflict the row already exists, so its password is left untouched —
+    // we only restore the admin role. The password is only ever set by this
+    // statement on a genuinely new row. We conflict on `email` (not `id`)
+    // because email is the constraint that matters here: the admin row may
+    // have been imported under a different id, and conflicting on `id` would
+    // raise a unique violation on email and abort the whole boot.
+    logger.info('bootstrap.admin_seeded', {
+      count: 1,
+      reason: userCount[0].n === 0 ? 'empty_users_table' : 'no_admin_present',
+    });
   } else {
     logger.info('bootstrap.admin_seed_skipped', { count: userCount[0].n });
   }

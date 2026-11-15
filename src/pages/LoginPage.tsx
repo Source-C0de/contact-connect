@@ -32,8 +32,30 @@ export default function LoginPage() {
         authedUser?.role === 'admin' ? '/admin/dashboard' : '/user/directory',
         { replace: true },
       );
-    } catch {
-      setError('Invalid email or password');
+    } catch (err) {
+      // Show the real reason instead of a blanket "Invalid email or
+      // password". A network failure (server down, wrong port, blocked
+      // firewall) is a completely different problem from a wrong password,
+      // and collapsing both into one message makes production issues
+      // impossible to diagnose from the browser.
+      const status = (err as { status?: number } | null)?.status;
+      const message = (err as { message?: string } | null)?.message || '';
+
+      if (status === 401) {
+        setError('Invalid email or password');
+      } else if (status === 503) {
+        setError(
+          'Cannot reach the ContactHub server. Check that the app container is running and reachable from this machine.',
+        );
+      } else if (status && status >= 500) {
+        setError(`Server error (${status}). Check the app container logs.`);
+      } else if (/network error|failed to fetch/i.test(message)) {
+        setError(
+          'Cannot reach the ContactHub server. Check your network connection and that the server is online.',
+        );
+      } else {
+        setError(message || 'Sign-in failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
