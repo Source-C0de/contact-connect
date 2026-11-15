@@ -7,6 +7,7 @@ import {
   BookOpen, UserCircle, LogOut, Menu, X, ChevronLeft
 } from 'lucide-react';
 import { AvatarInitials } from '@/components/AvatarInitials';
+import { AppLogo } from '@/components/AppLogo';
 import { cn } from '@/lib/utils';
 
 const adminNav = [
@@ -60,10 +61,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       >
         {/* Logo */}
         <div className={cn('flex h-16 items-center border-b border-sidebar-border px-4', collapsed ? 'justify-center' : 'gap-3')}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-            <Users className="h-4 w-4 text-sidebar-primary-foreground" />
-          </div>
-          {!collapsed && <span className="text-lg font-bold text-sidebar-accent-foreground">ContactHub</span>}
+          {!collapsed && <AppLogo variant="card" className="h-10 w-auto" />}
+          {!collapsed && <span className="text-lg font-bold text-sidebar-accent-foreground">AFPC ContactHub</span>}
           <button onClick={() => setSidebarOpen(false)} className="ml-auto text-sidebar-foreground md:hidden">
             <X className="h-5 w-5" />
           </button>
@@ -111,9 +110,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Menu className="h-5 w-5" />
             </button>
             <div className="hidden md:flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary md:hidden">
-                <Users className="h-4 w-4 text-primary-foreground" />
-              </div>
+              <AppLogo variant="card" className="h-8 w-auto md:hidden" />
             </div>
           </div>
 

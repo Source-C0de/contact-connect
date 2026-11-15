@@ -227,7 +227,7 @@ function localRequest<T>(
 ): T {
   if (!LOCAL_FALLBACK_ENABLED) {
     throw makeError(
-      'The ContactHub API is unreachable and the local offline mirror is disabled.',
+      'The AFPC ContactHub API is unreachable and the local offline mirror is disabled.',
       503,
     );
   }

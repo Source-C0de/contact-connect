@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Users } from 'lucide-react';
+import { AppLogo } from '@/components/AppLogo';
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -43,10 +43,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30">
       <div className="w-full max-w-md space-y-8 rounded-xl bg-card p-8 shadow-lg border border-border">
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary">
-            <Users className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <h1 className="mt-4 text-2xl font-bold text-foreground">ContactHub</h1>
+          <AppLogo className="mx-auto h-24 w-auto" />
+          <h1 className="mt-4 text-2xl font-bold text-foreground">AFPC ContactHub</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to your account</p>
         </div>
 
