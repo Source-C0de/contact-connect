@@ -451,15 +451,30 @@ Users table not empty (2 row(s)) — skipping admin seed.
 > **If `admin123` doesn't work, the password was already changed.**
 > The default only exists until someone sets a new one. If the log says
 > `skipping admin seed`, the database already has users — sign in with
-> the current password, or reset it directly:
-> ```bash
-> # 1. compute the hash for your new password
-> node -e "console.log(require('crypto').createHash('sha256').update('contacthub-static-salt'+'yournewpassword').digest('hex'))"
+> the current password, or reset it directly.
 >
-> # 2. write it to the database
-> docker compose exec db psql -U contacthub -d contacthub \
->   -c "UPDATE users SET password_hash = '<paste-the-hash-here>' WHERE email = 'admin@corp.com';"
+> Passwords are stored as PBKDF2-HMAC-SHA256 with a per-user random salt, in
+> the format `pbkdf2$<iterations>$<salt-hex>$<hash-hex>`. To reset a password,
+> generate the hash with the app's own `hashPassword()` — never with a plain
+> `sha256` one-liner, which produces a value the server will reject:
+> ```bash
+> docker compose exec -T app node --input-type=module -e "
+> import { hashPassword } from './server/auth.js';
+> import { query, pool } from './server/db.js';
+> const hash = hashPassword('yournewpassword');
+> const { rows } = await query(
+>   'UPDATE users SET password_hash = \$1 WHERE LOWER(email) = LOWER(\$2) RETURNING id, email',
+>   [hash, 'admin@corp.com'],
+> );
+> console.log('updated:', JSON.stringify(rows));
+> await pool.end();
+> "
 > ```
+>
+> Rows imported from the legacy `server/data.json` still carry the original
+> `SHA-256('contacthub-static-salt' + password)` digest. The server accepts
+> that format and transparently rehashes the row to PBKDF2 the first time that
+> account signs in successfully.
 
 **Change the default password immediately** after the first sign-in:
 **Admin console → User Management → set a new password.** Everyone on the

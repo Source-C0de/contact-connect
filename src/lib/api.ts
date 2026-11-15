@@ -1,9 +1,13 @@
 /**
  * Unified API layer for ContactHub.
  *
- * Tries to talk to the LAN HTTP server (server/index.js) first.
- * Falls back to a per-browser `localStorage` mirror when the server
- * is unreachable so a single user can still use the app offline.
+ * Talks to the ContactHub HTTP API (server/index.js).
+ *
+ * A per-browser `localStorage` mirror exists as a last-resort fallback for
+ * fully offline development. It is DISABLED by default: silently swapping in
+ * browser-local data when the backend is down makes a broken deployment look
+ * healthy, which is exactly the failure mode the observability stack is meant
+ * to catch. Set `VITE_ENABLE_LOCAL_FALLBACK=true` to turn it back on.
  */
 
 export interface PaginatedResponse<T> {
@@ -24,6 +28,15 @@ const LS_BASE = 'contacthub_api_v1';
 const LS_TOKEN_KEY = 'contacthub_access_token';
 const LS_USER_KEY = 'contacthub_user';
 const LS_SERVER_OK_KEY = 'contacthub_server_ok';
+
+/**
+ * Whether the browser-local mirror may be used when the API is unreachable.
+ *
+ * Off by default so a backend outage surfaces as an error instead of being
+ * papered over with per-browser data. Turn it on for offline UI work.
+ */
+export const LOCAL_FALLBACK_ENABLED =
+  (import.meta.env.VITE_ENABLE_LOCAL_FALLBACK as string | undefined) === 'true';
 
 export interface ApiError extends Error {
   status?: number;
@@ -212,6 +225,12 @@ function localRequest<T>(
   path: string,
   body?: unknown,
 ): T {
+  if (!LOCAL_FALLBACK_ENABLED) {
+    throw makeError(
+      'The ContactHub API is unreachable and the local offline mirror is disabled.',
+      503,
+    );
+  }
   localSeed();
   const m = method.toUpperCase();
   const p = path.split('?')[0];

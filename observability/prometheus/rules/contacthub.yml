@@ -1,0 +1,113 @@
+# Alerting rules for ContactHub.
+#
+# DESIGN RULE: every rule below is expressed in terms of USER IMPACT, not
+# infrastructure. We deliberately do NOT alert on CPU, memory or disk. A
+# reviewer should be able to read each expression and immediately say
+# "yes, a user is hurting right now".
+#
+# Each rule has a matching automated remediation in the on-call agent
+# (oncall-agent/agent.js). `runbook` names the procedure the agent executes.
+
+groups:
+  - name: contacthub-user-impact
+    interval: 30s
+    rules:
+      # ---- User cannot log in at all -------------------------------------
+      - alert: ContactHubLoginFailureSpike
+        expr: |
+          sum(rate(contacthub_user_impact_events_total{event="login_failed"}[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: critical
+          runbook: auth-recover
+        annotations:
+          summary: "Users cannot log in to ContactHub"
+          description: >-
+            Login failures are sustained at {{ $value | printf "%.2f" }}/s over 5 minutes.
+            Users are locked out of the directory. Automated remediation will attempt
+            to restore the auth dependency and recycle the API container.
+          impact: "Every user of the contact directory is unable to sign in."
+
+      # ---- The directory search endpoint is failing ----------------------
+      - alert: ContactHubDirectorySearchFailing
+        expr: |
+          sum(rate(contacthub_http_requests_total{route="/api/v1/employees",status=~"5.."}[5m]))
+          / clamp_min(sum(rate(contacthub_http_requests_total{route="/api/v1/employees"}[5m])), 0.001)
+          > 0.25
+        for: 3m
+        labels:
+          severity: critical
+          runbook: api-recover
+        annotations:
+          summary: "Directory search is returning server errors"
+          description: >-
+            More than 25% of directory searches have failed with 5xx for 3 minutes.
+            Users cannot find colleagues.
+          impact: "Users searching for a colleague see an error instead of results."
+
+      # ---- The API is too slow to be usable ------------------------------
+      - alert: ContactHubApiLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(contacthub_http_request_duration_seconds_bucket[5m])
+            )
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          runbook: api-recover
+        annotations:
+          summary: "ContactHub API p95 latency above 1s"
+          description: >-
+            The 95th percentile request latency has been above 1 second for 5 minutes.
+            The directory feels broken to users even though it technically responds.
+          impact: "The directory is unusably slow for a meaningful share of requests."
+
+      # ---- Broad 5xx rate across the API ---------------------------------
+      - alert: ContactHubHighErrorRate
+        expr: |
+          sum(rate(contacthub_http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(contacthub_http_requests_total[5m])), 0.001)
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          runbook: api-recover
+        annotations:
+          summary: "More than 10% of API requests are failing"
+          description: >-
+            The overall 5xx rate is {{ $value | printf "%.1%" }} over 5 minutes.
+          impact: "A significant share of all user actions against the API are failing."
+
+      # ---- A user journey stopped happening entirely ---------------------
+      # "No logins in 30 minutes" during business hours means users cannot
+      # get in at all, even if individual failures are not spiking.
+      - alert: ContactHubNoUserActivity
+        expr: |
+          sum(rate(contacthub_user_impact_events_total{event=~"login_succeeded|directory_searched"}[30m])) == 0
+        for: 10m
+        labels:
+          severity: warning
+          runbook: api-recover
+        annotations:
+          summary: "No user activity recorded for 30 minutes"
+          description: >-
+            No successful logins or directory searches have been recorded for
+            30 minutes. Either every user is blocked or the API is not receiving
+            traffic.
+          impact: "Users are not able to use the directory at all."
+
+      # ---- The API is not scrapeable (the whole service is down) ---------
+      - alert: ContactHubApiDown
+        expr: up{job="contacthub-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          runbook: api-recover
+        annotations:
+          summary: "ContactHub API is not responding to scrapes"
+          description: >-
+            Prometheus has been unable to scrape the API for 2 minutes.
+          impact: "The entire application is down for all users."

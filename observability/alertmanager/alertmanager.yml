@@ -1,0 +1,29 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  # Group alerts so one broken dependency doesn't produce a storm of
+  # separate notifications.
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  receiver: oncall-agent
+  routes:
+    # Critical alerts go straight to the responder agent, bypassing the
+    # grouping delay, because every second of downtime costs users.
+    - matchers:
+        - severity="critical"
+      receiver: oncall-agent
+      group_wait: 10s
+      continue: false
+
+receivers:
+  # The on-call agent is an HTTP service that receives the Alertmanager
+  # webhook, maps the alert to a runbook, executes it and reports the result.
+  - name: oncall-agent
+    webhook_configs:
+      - url: http://oncall-agent:8080/alerts
+        send_resolved: true
+        max_alerts: 0

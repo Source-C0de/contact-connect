@@ -1,7 +1,7 @@
 import { api } from '@/lib/api';
 import type { SyncLog, SyncType } from '@/data/mockData';
 
-interface BackendSyncLog {
+export interface BackendSyncLog {
   id: string;
   sync_type: string;
   status: string;
@@ -12,9 +12,9 @@ interface BackendSyncLog {
   created_at?: string;
 }
 
-interface SyncSetting {
+export interface SyncSetting {
   id: string;
-  sync_type: string;
+  sync_type: SyncType;
   is_enabled: boolean;
   last_run: string | null;
   next_scheduled: string | null;
@@ -39,8 +39,15 @@ export const syncService = {
     await api.patch(`/admin/sync/settings/${syncType}`, { is_enabled: enabled });
   },
 
-  async runSync(syncType: 'outlook' | 'ucm'): Promise<void> {
-    await api.post(`/admin/sync/run/${syncType}`);
+  /**
+   * Trigger a sync run.
+   *
+   * The backend returns the persisted sync log on success and a 502 with the
+   * failed sync log on failure, so the caller gets the real record count
+   * either way. Throws on failure so the UI can surface the error.
+   */
+  async runSync(syncType: 'outlook' | 'ucm'): Promise<BackendSyncLog> {
+    return await api.post<BackendSyncLog>(`/admin/sync/run/${syncType}`);
   },
 
   async getLogs(): Promise<SyncLog[]> {

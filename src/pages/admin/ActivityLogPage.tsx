@@ -1,35 +1,69 @@
-import { useState, useMemo } from 'react';
-import { mockActivityLogs, type ActionType } from '@/data/mockData';
+import { useEffect, useMemo, useState } from 'react';
+import type { ActionType } from '@/data/mockData';
+import { auditService } from '@/services/auditService';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Download } from 'lucide-react';
+import { Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface ActivityLog {
+  id: string;
+  timestamp: string;
+  actor: string;
+  action: ActionType;
+  target: string;
+}
 
 export default function ActivityLogPage() {
   const [actionFilter, setActionFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadLogs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await auditService.getLogs();
+      setLogs(data);
+    } catch (err) {
+      // Surface the outage instead of silently showing an empty table.
+      setError(err instanceof Error ? err.message : 'Failed to load activity logs');
+      toast.error('Could not load activity logs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadLogs();
+  }, []);
 
   const filtered = useMemo(() => {
-    let result = [...mockActivityLogs];
+    let result = [...logs];
     if (actionFilter !== 'all') result = result.filter(l => l.action === actionFilter);
     if (dateFrom) result = result.filter(l => l.timestamp >= dateFrom);
     if (dateTo) result = result.filter(l => l.timestamp <= dateTo + ' 23:59');
     return result;
-  }, [actionFilter, dateFrom, dateTo]);
+  }, [logs, actionFilter, dateFrom, dateTo]);
 
-  const exportCsv = () => {
-    const headers = 'Timestamp,Actor,Action,Target\n';
-    const rows = filtered.map(l => `${l.timestamp},${l.actor},${l.action},${l.target}`).join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'activity_log.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('CSV exported');
+  const exportCsv = async () => {
+    try {
+      const csv = await auditService.exportLogs();
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'activity_log.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV exported');
+    } catch {
+      toast.error('CSV export failed');
+    }
   };
 
   const actionColors: Record<ActionType, string> = {
@@ -46,9 +80,14 @@ export default function ActivityLogPage() {
           <h1 className="text-2xl font-bold text-foreground">Activity Log</h1>
           <p className="text-sm text-muted-foreground">Audit trail of all actions</p>
         </div>
-        <Button variant="outline" onClick={exportCsv}>
-          <Download className="mr-2 h-4 w-4" /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void loadLogs()} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+          <Button variant="outline" onClick={() => void exportCsv()}>
+            <Download className="mr-2 h-4 w-4" /> Export CSV
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -69,6 +108,12 @@ export default function ActivityLogPage() {
         <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40" />
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -80,12 +125,28 @@ export default function ActivityLogPage() {
             </tr>
           </thead>
           <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                  Loading activity logs…
+                </td>
+              </tr>
+            )}
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                  No activity recorded yet.
+                </td>
+              </tr>
+            )}
             {filtered.map(log => (
               <tr key={log.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                <td className="p-3 text-muted-foreground whitespace-nowrap">{log.timestamp}</td>
+                <td className="p-3 text-muted-foreground whitespace-nowrap">
+                  {new Date(log.timestamp).toLocaleString()}
+                </td>
                 <td className="p-3 font-medium text-foreground">{log.actor}</td>
                 <td className="p-3">
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${actionColors[log.action]}`}>
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${actionColors[log.action] ?? 'bg-muted text-muted-foreground'}`}>
                     {log.action}
                   </span>
                 </td>

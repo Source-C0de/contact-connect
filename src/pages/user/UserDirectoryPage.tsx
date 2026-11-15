@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { employeeService } from '@/services/employeeService';
 import type { Employee, OnlineStatus } from '@/data/mockData';
-import { DEPARTMENT_COLORS } from '@/data/mockData';
+import { useDepartmentColors } from '@/hooks/useDepartmentColors';
 import { SearchInput } from '@/components/SearchInput';
 import { AvatarInitials } from '@/components/AvatarInitials';
 import { DepartmentBadge } from '@/components/DepartmentBadge';
@@ -20,6 +20,7 @@ export default function UserDirectory() {
   const [selectedStatuses, setSelectedStatuses] = useState<Set<OnlineStatus>>(new Set());
   const [drawerEmployee, setDrawerEmployee] = useState<Employee | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const { getColor } = useDepartmentColors();
 
   useEffect(() => { employeeService.getAll().then(e => setEmployees(e.filter(emp => emp.status === 'active'))); }, []);
 
@@ -146,7 +147,7 @@ export default function UserDirectory() {
               >
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <AvatarInitials name={emp.fullName} department={emp.department} size="md" />
+                    <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} size="md" />
                     <StatusDot status={emp.onlineStatus} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card" />
                   </div>
                   <div className="min-w-0">
@@ -155,7 +156,7 @@ export default function UserDirectory() {
                   </div>
                 </div>
                 <div className="mt-3 space-y-1.5">
-                  <DepartmentBadge department={emp.department} color={DEPARTMENT_COLORS[emp.department]} />
+                  <DepartmentBadge department={emp.department} color={getColor(emp.department)} />
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Phone className="h-3 w-3" /> Ext. {emp.extension}
                   </div>
@@ -188,13 +189,13 @@ export default function UserDirectory() {
                   >
                     <td className="p-3">
                       <div className="flex items-center gap-3">
-                        <AvatarInitials name={emp.fullName} department={emp.department} size="sm" />
+                        <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} size="sm" />
                         <span className="font-medium text-foreground">{emp.fullName}</span>
                       </div>
                     </td>
                     <td className="p-3 text-muted-foreground hidden md:table-cell">{emp.jobTitle}</td>
                     <td className="p-3 hidden sm:table-cell">
-                      <DepartmentBadge department={emp.department} color={DEPARTMENT_COLORS[emp.department]} />
+                      <DepartmentBadge department={emp.department} color={getColor(emp.department)} />
                     </td>
                     <td className="p-3 text-muted-foreground">{emp.extension}</td>
                     <td className="p-3 text-muted-foreground hidden lg:table-cell">{emp.email}</td>
@@ -222,13 +223,13 @@ export default function UserDirectory() {
 
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <AvatarInitials name={drawerEmployee.fullName} department={drawerEmployee.department} size="lg" />
+                  <AvatarInitials name={drawerEmployee.fullName} department={drawerEmployee.department} color={getColor(drawerEmployee.department)} size="lg" />
                   <StatusDot status={drawerEmployee.onlineStatus} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card h-3.5 w-3.5" />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-foreground">{drawerEmployee.fullName}</h3>
                   <p className="text-sm text-muted-foreground">{drawerEmployee.jobTitle}</p>
-                  <DepartmentBadge department={drawerEmployee.department} color={DEPARTMENT_COLORS[drawerEmployee.department]} className="mt-1" />
+                  <DepartmentBadge department={drawerEmployee.department} color={getColor(drawerEmployee.department)} className="mt-1" />
                 </div>
               </div>
 

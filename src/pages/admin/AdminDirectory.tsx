@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { employeeService } from '@/services/employeeService';
 import type { Employee } from '@/data/mockData';
-import { DEPARTMENT_COLORS } from '@/data/mockData';
+import { useDepartmentColors } from '@/hooks/useDepartmentColors';
 import { SearchInput } from '@/components/SearchInput';
 import { AvatarInitials } from '@/components/AvatarInitials';
 import { DepartmentBadge } from '@/components/DepartmentBadge';
@@ -24,6 +24,7 @@ export default function AdminDirectory() {
   const [page, setPage] = useState(1);
   const [confirmAction, setConfirmAction] = useState<{ type: string; ids: string[] } | null>(null);
   const perPage = 10;
+  const { getColor } = useDepartmentColors();
 
   useEffect(() => {
     employeeService.getAll().then(setEmployees);
@@ -179,13 +180,13 @@ export default function AdminDirectory() {
                 </td>
                 <td className="p-3">
                   <div className="flex items-center gap-3">
-                    <AvatarInitials name={emp.fullName} department={emp.department} size="sm" />
+                    <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} size="sm" />
                     <span className="font-medium text-foreground">{emp.fullName}</span>
                   </div>
                 </td>
                 <td className="p-3 text-muted-foreground hidden md:table-cell">{emp.jobTitle}</td>
                 <td className="p-3 hidden lg:table-cell">
-                  <DepartmentBadge department={emp.department} color={DEPARTMENT_COLORS[emp.department]} />
+                  <DepartmentBadge department={emp.department} color={getColor(emp.department)} />
                 </td>
                 <td className="p-3 text-muted-foreground hidden lg:table-cell">{emp.email}</td>
                 <td className="p-3 text-muted-foreground hidden sm:table-cell">{emp.extension}</td>

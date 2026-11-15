@@ -54,6 +54,7 @@ export const departmentService = {
       const dept = await api.__local.request<BackendDepartment>('POST', '/departments', {
         name,
         code: name.substring(0, 3).toUpperCase(),
+        color,
       });
       return mapDepartment(dept);
     }

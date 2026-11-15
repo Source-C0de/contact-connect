@@ -7,6 +7,7 @@
 //   key/value table; this is where the session secret + future toggles live.
 
 import pg from 'pg';
+import { logger } from './observability.js';
 
 const DEFAULT_LOCAL_URL = 'postgres://contacthub:contacthub@localhost:5432/contacthub';
 const DATABASE_URL = process.env.DATABASE_URL || DEFAULT_LOCAL_URL;
@@ -20,7 +21,10 @@ export const pool = new pg.Pool({
 pool.on('error', (err) => {
   // Surface idle-client errors so they show up in `docker compose logs`
   // instead of silently killing background connections.
-  console.error('[pg pool] idle client error:', err.message);
+  logger.error('db.pool_error', {
+    errorType: err?.name || 'Error',
+    error: err?.message || String(err),
+  });
 });
 
 export async function query(text, params) {

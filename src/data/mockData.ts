@@ -64,15 +64,6 @@ export interface AuthUser {
   avatar?: string;
 }
 
-export const DEPARTMENT_COLORS: Record<string, string> = {
-  Engineering: '#3B82F6',
-  Sales: '#F59E0B',
-  HR: '#EC4899',
-  Finance: '#10B981',
-  IT: '#8B5CF6',
-  Operations: '#F97316',
-};
-
 export const mockEmployees: Employee[] = [
   { id: '1', fullName: 'Sarah Johnson', jobTitle: 'Senior Software Engineer', department: 'Engineering', email: 'sarah.johnson@corp.com', extension: '1001', mobile: '+1 (555) 234-5678', location: 'New York - Floor 3', status: 'active', onlineStatus: 'online', dateAdded: '2024-01-15' },
   { id: '2', fullName: 'Michael Chen', jobTitle: 'Product Manager', department: 'Engineering', email: 'michael.chen@corp.com', extension: '1002', mobile: '+1 (555) 345-6789', location: 'New York - Floor 3', status: 'active', onlineStatus: 'online', dateAdded: '2024-01-20' },
