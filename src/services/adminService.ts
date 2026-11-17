@@ -1,10 +1,12 @@
 import { api, type PaginatedResponse } from '@/lib/api';
+import { absoluteApiUrl } from '@/lib/apiBase';
 import type { SystemUser } from '@/data/mockData';
 
 interface BackendUser {
   id: string;
   employee_id?: string | null;
   email: string;
+  name?: string;
   role: 'admin' | 'user';
   // Server (LAN) returns camelCase via publicUser(); legacy/localStorage fallback
   // shapes use snake_case. We accept both so the same mapper handles both paths.
@@ -16,6 +18,8 @@ interface BackendUser {
   last_os?: string | null;
   last_browser?: string | null;
   architecture?: string | null;
+  photoUrl?: string | null;
+  photo_url?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -27,13 +31,15 @@ interface DashboardStats {
   recent_activity: number;
 }
 
-function mapSystemUser(user: BackendUser): SystemUser {
+export function mapSystemUser(user: BackendUser): SystemUser {
   const isActive = user.isActive ?? user.is_active ?? false;
   const lastLogin = user.lastLogin ?? user.last_login ?? null;
-  const nameFromEmail = user.email.split('@')[0];
+  // The server stores a real display name. Fall back to the email local-part
+  // for legacy/local-fallback payloads that omit it.
+  const name = user.name || user.email.split('@')[0];
   return {
     id: user.id,
-    name: nameFromEmail,
+    name,
     email: user.email,
     role: user.role,
     lastLogin: lastLogin || 'Never',
@@ -42,6 +48,7 @@ function mapSystemUser(user: BackendUser): SystemUser {
     lastOS: user.last_os ?? null,
     lastBrowser: user.last_browser ?? null,
     architecture: user.architecture ?? null,
+    photoUrl: absoluteApiUrl(user.photoUrl ?? user.photo_url ?? undefined),
   };
 }
 
@@ -109,6 +116,26 @@ export const adminService = {
       if (status && status >= 400 && status < 500) throw err;
       await api.__local.request('PATCH', `/admin/users/${userId}/password`, { password });
     }
+  },
+
+  /**
+   * Upload (or replace) a user's profile picture.
+   *
+   * Deliberately has NO local-fallback branch: a binary picture cannot be
+   * mirrored into localStorage, and the local router has no handler for this
+   * route — it would throw a misleading 404 in place of the real network
+   * error.
+   */
+  async uploadUserPhoto(userId: string, file: File): Promise<SystemUser> {
+    const form = new FormData();
+    form.append('photo', file, file.name);
+    const user = await api.upload<BackendUser>(`/admin/users/${userId}/photo`, form);
+    return mapSystemUser(user);
+  },
+
+  async removeUserPhoto(userId: string): Promise<SystemUser> {
+    const user = await api.delete<BackendUser>(`/admin/users/${userId}/photo`);
+    return mapSystemUser(user);
   },
 
   async getSessionSettings(): Promise<SessionSettings> {

@@ -93,7 +93,7 @@ export default function UserProfile() {
           <>
             {/* No linked directory record — fall back to the account itself. */}
             <div className="flex items-center gap-4">
-              <AvatarInitials name={user?.name || user?.email || 'User'} color="#6B7280" size="lg" />
+              <AvatarInitials name={user?.name || user?.email || 'User'} color="#6B7280" size="lg" src={user?.avatar} />
               <div>
                 <h2 className="text-xl font-bold text-foreground">{user?.name || user?.email}</h2>
                 <p className="text-sm text-muted-foreground">
@@ -118,6 +118,7 @@ export default function UserProfile() {
                   name={employee.fullName}
                   department={employee.department}
                   color={getColor(employee.department)}
+                  src={employee.photoUrl}
                   size="lg"
                 />
                 <StatusDot

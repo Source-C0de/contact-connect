@@ -1,11 +1,17 @@
 import { api } from '@/lib/api';
+import { absoluteApiUrl } from '@/lib/apiBase';
 import type { AuthUser } from '@/data/mockData';
 
 interface BackendUser {
   id: string;
   email: string;
+  name?: string;
   role: 'admin' | 'user';
   is_active: boolean;
+  // /auth/login returns camelCase via publicUser(); /auth/me returns
+  // snake_case. Accept both so one mapper handles both paths.
+  photoUrl?: string | null;
+  photo_url?: string | null;
 }
 
 interface ServerLoginResponse {
@@ -17,15 +23,21 @@ interface ServerLoginResponse {
 interface ServerMeResponse {
   user_id: string;
   email: string;
+  name?: string;
   role: 'admin' | 'user';
+  photo_url?: string | null;
 }
 
-function mapBackendUser(user: BackendUser | ServerMeResponse): AuthUser {
+export function mapBackendUser(user: BackendUser | ServerMeResponse): AuthUser {
+  const photo = 'photoUrl' in user ? user.photoUrl : user.photo_url;
   return {
     id: 'id' in user ? user.id : user.user_id,
     email: user.email,
-    name: user.email.split('@')[0],
+    // Prefer the server-provided display name; fall back to the email
+    // local-part for legacy/local-fallback payloads that omit it.
+    name: user.name || user.email.split('@')[0],
     role: user.role,
+    avatar: absoluteApiUrl(photo || undefined),
   };
 }
 

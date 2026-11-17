@@ -59,8 +59,13 @@ export async function initSchema() {
       password_hash   TEXT NOT NULL,
       is_active       BOOLEAN NOT NULL DEFAULT TRUE,
       last_login      TIMESTAMPTZ,
+      photo_url       TEXT,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- Existing deployments predate the photo_url column. ADD COLUMN IF NOT
+    -- EXISTS is idempotent, so this is safe to run on every boot.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT;
 
     CREATE TABLE IF NOT EXISTS departments (
       id              TEXT PRIMARY KEY,
@@ -78,10 +83,16 @@ export async function initSchema() {
       extension       TEXT NOT NULL DEFAULT '',
       mobile          TEXT NOT NULL DEFAULT '',
       office_location TEXT NOT NULL DEFAULT '',
+      photo_url       TEXT,
       is_active       BOOLEAN NOT NULL DEFAULT TRUE,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- Existing deployments predate the employees.photo_url column. ADD COLUMN
+    -- IF NOT EXISTS is idempotent, so this is safe to run on every boot.
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS photo_url TEXT;
+
     CREATE INDEX IF NOT EXISTS employees_dept_idx ON employees (department_name);
     CREATE INDEX IF NOT EXISTS employees_active_idx ON employees (is_active);
 

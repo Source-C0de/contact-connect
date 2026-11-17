@@ -180,7 +180,7 @@ export default function AdminDirectory() {
                 </td>
                 <td className="p-3">
                   <div className="flex items-center gap-3">
-                    <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} size="sm" />
+                    <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} src={emp.photoUrl} size="sm" />
                     <span className="font-medium text-foreground">{emp.fullName}</span>
                   </div>
                 </td>

@@ -147,7 +147,7 @@ export default function UserDirectory() {
               >
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} size="md" />
+                    <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} src={emp.photoUrl} size="md" />
                     <StatusDot status={emp.onlineStatus} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card" />
                   </div>
                   <div className="min-w-0">
@@ -189,7 +189,7 @@ export default function UserDirectory() {
                   >
                     <td className="p-3">
                       <div className="flex items-center gap-3">
-                        <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} size="sm" />
+                        <AvatarInitials name={emp.fullName} department={emp.department} color={getColor(emp.department)} src={emp.photoUrl} size="sm" />
                         <span className="font-medium text-foreground">{emp.fullName}</span>
                       </div>
                     </td>
@@ -223,7 +223,7 @@ export default function UserDirectory() {
 
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <AvatarInitials name={drawerEmployee.fullName} department={drawerEmployee.department} color={getColor(drawerEmployee.department)} size="lg" />
+                  <AvatarInitials name={drawerEmployee.fullName} department={drawerEmployee.department} color={getColor(drawerEmployee.department)} src={drawerEmployee.photoUrl} size="lg" />
                   <StatusDot status={drawerEmployee.onlineStatus} className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card h-3.5 w-3.5" />
                 </div>
                 <div>

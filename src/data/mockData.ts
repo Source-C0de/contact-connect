@@ -38,6 +38,8 @@ export interface SystemUser {
   lastOS?: string | null;
   lastBrowser?: string | null;
   architecture?: string | null;
+  // Absolute URL of the uploaded profile picture, if one has been set.
+  photoUrl?: string;
 }
 
 export interface SyncLog {

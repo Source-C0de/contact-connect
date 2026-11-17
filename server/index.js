@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import multer from 'multer';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // Side-effect import: loads the repo-root `.env` into process.env BEFORE
 // `db.js` captures DATABASE_URL. Must stay above the db.js import.
@@ -46,6 +47,27 @@ const STATIC_DIR = process.env.STATIC_DIR
   || (process.env.NODE_ENV === 'production'
     ? path.resolve(__dirname, '..', 'dist')
     : '');
+
+// Where uploaded profile pictures live on disk. In Docker this is the `/data`
+// named volume, so pictures survive an image rebuild. In local dev it is
+// `server/uploads` (git-ignored). The directory is created on boot.
+const UPLOADS_DIR = process.env.UPLOADS_DIR
+  || (process.env.NODE_ENV === 'production'
+    ? '/data/uploads'
+    : path.resolve(__dirname, 'uploads'));
+
+// Hard ceiling on a stored profile picture. The browser downsizes the image
+// before uploading, so in practice the limit is never hit — but the server
+// enforces it independently so an oversized upload can never reach disk.
+const MAX_UPLOAD_BYTES = 50 * 1024;
+
+// The image formats we accept. The extension is always derived from this
+// allowlist — never from the client-supplied filename.
+const ALLOWED_IMAGE_TYPES = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
 
 // The session secret is generated on first boot and stored in the
 // `settings` table (key = 'sessionSecret') so that restarting the server
@@ -163,6 +185,7 @@ function publicUser(u) {
     isActive: u.is_active,
     lastLogin: toIso(u.last_login),
     createdAt: toIso(u.created_at),
+    photoUrl: u.photo_url || null,
   };
 }
 
@@ -196,6 +219,83 @@ const app = express();
 app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+
+// Multipart parsing for profile picture uploads.
+//
+// memoryStorage (not diskStorage): the file is capped at 50 KB so holding it
+// in memory costs at most 50 KB per in-flight request, and it lets us
+// validate the size, MIME type and magic bytes BEFORE touching the disk.
+// The server writes the file itself — it owns the filename and must be able
+// to delete the previous one.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES,
+    files: 1,
+    fields: 0,
+    parts: 1,
+  },
+});
+
+/**
+ * Verify a buffer's leading bytes match the claimed image format.
+ *
+ * The browser-supplied `Content-Type` on a multipart part is a hint, not
+ * evidence — a client can claim `image/png` while sending anything at all.
+ * Serving unverified bytes from a static mount would turn the uploads
+ * directory into a file-hosting hole.
+ */
+function hasExpectedSignature(buf, ext) {
+  if (!buf || buf.length < 12) return false;
+  if (ext === 'jpg') {
+    return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (ext === 'png') {
+    return buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  }
+  if (ext === 'webp') {
+    // "RIFF" .... "WEBP"
+    return buf.toString('ascii', 0, 4) === 'RIFF'
+      && buf.toString('ascii', 8, 12) === 'WEBP';
+  }
+  return false;
+}
+
+/**
+ * Extract the stored filename from a `photo_url` value.
+ *
+ * The stored value is `/api/v1/uploads/<file>?v=<timestamp>`. Strip the query
+ * and reject anything that looks like a path so a tampered DB value can
+ * never make us unlink a file outside the uploads directory.
+ *
+ * User ids start with `u-` and employee ids with `e-`; both prefixes are
+ * accepted so employee pictures are cleaned up on replace/remove too.
+ */
+function photoFilename(photoUrl) {
+  if (!photoUrl) return null;
+  const withoutQuery = String(photoUrl).split('?')[0];
+  const name = path.basename(withoutQuery);
+  if (!name || name === '.' || name === '..') return null;
+  if (!/^[ue]-[A-Za-z0-9_-]+\.(jpg|png|webp)$/.test(name)) return null;
+  return name;
+}
+
+// Uploaded profile pictures.
+//
+// Mounted in BOTH dev and prod (unlike the SPA static dir, which is prod-only)
+// because in development the API runs on its own port and the Vite dev server
+// is the only thing serving the page. Registered before the SPA fallback so an
+// upload request can never be swallowed by the index.html catch-all.
+//
+// These files are served WITHOUT authentication: a browser <img> request
+// cannot carry an Authorization header, so gating the bytes would require a
+// cookie or signed-URL scheme. For an internal LAN tool that is an
+// acceptable trade-off — the filenames are opaque user ids.
+app.use('/api/v1/uploads', express.static(UPLOADS_DIR, {
+  maxAge: '1h',
+  index: false,
+  dotfiles: 'deny',
+}));
 
 // ---------------- Observability middleware ----------------
 
@@ -336,6 +436,10 @@ app.get('/api/v1/auth/me', authMiddleware, ah(async (req, res) => {
     user_id: user.id,
     email: user.email,
     role: user.role,
+    // `name` was already in the DB but was never exposed here, so the client
+    // had to derive the display name from the email address.
+    name: user.name,
+    photo_url: user.photo_url || null,
   });
 }));
 
@@ -379,6 +483,7 @@ function employeeToFrontend(e, deptIndex) {
     extension: e.extension,
     mobile: e.mobile || '',
     location: e.office_location || '',
+    photoUrl: e.photo_url || null,
     status: e.is_active ? 'active' : 'inactive',
     onlineStatus: e.is_active ? 'online' : 'offline',
     dateAdded: toIsoDate(e.created_at) || toIsoDate(new Date()),
@@ -673,6 +778,213 @@ app.patch('/api/v1/admin/users/:id/password', authMiddleware, adminOnly, ah(asyn
   await logActivity(req.session.email, 'Updated', 'user', user.id, { field: 'password' });
   res.json(publicUser(user));
 }));
+
+// ---- Admin: profile pictures ----
+//
+// Only admins may set a picture. The bytes live on disk under UPLOADS_DIR
+// and `users.photo_url` holds the URL path.
+//
+// The 50 KB limit is enforced twice: multer's `limits.fileSize` aborts the
+// request stream at 50 KB, and the handler re-checks `file.size` before
+// writing anything to disk. The browser also downsizes the picture before
+// uploading, so in practice the limit is never reached.
+
+app.post(
+  '/api/v1/admin/users/:id/photo',
+  authMiddleware,
+  adminOnly,
+  upload.single('photo'),
+  ah(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+    if (req.file.size > MAX_UPLOAD_BYTES) {
+      return res.status(400).json({
+        error: `Image is too large. Maximum size is ${MAX_UPLOAD_BYTES / 1024} KB.`,
+      });
+    }
+    const ext = ALLOWED_IMAGE_TYPES.get(req.file.mimetype);
+    if (!ext) {
+      return res.status(400).json({ error: 'Unsupported image type. Use JPEG, PNG or WebP.' });
+    }
+    if (!hasExpectedSignature(req.file.buffer, ext)) {
+      return res.status(400).json({ error: 'File is not a valid image' });
+    }
+
+    const { rows: userRows } = await query(
+      'SELECT id, email, photo_url FROM users WHERE id = $1',
+      [req.params.id],
+    );
+    const target = userRows[0];
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    // The filename is derived from the user id, never from the client's
+    // filename (path traversal / extension spoofing).
+    const filename = `${target.id}.${ext}`;
+    await fs.promises.writeFile(path.join(UPLOADS_DIR, filename), req.file.buffer);
+
+    // `?v=` busts the browser cache so a replaced picture is fetched fresh
+    // instead of being served from the previous response's cache.
+    const publicPath = `/api/v1/uploads/${filename}?v=${Date.now()}`;
+    const { rows: updatedRows } = await query(
+      'UPDATE users SET photo_url = $1 WHERE id = $2 RETURNING *',
+      [publicPath, target.id],
+    );
+
+    // A picture with the SAME extension was overwritten in place, so only a
+    // format change leaves an orphan behind. Delete it AFTER the DB write so
+    // a failed update never leaves a dangling photo_url.
+    const previous = photoFilename(target.photo_url);
+    if (previous && previous !== filename) {
+      await fs.promises.unlink(path.join(UPLOADS_DIR, previous)).catch(() => {});
+    }
+
+    await logActivity(req.session.email, 'Updated', 'user', target.id, {
+      field: 'photo_url',
+      bytes: req.file.size,
+      contentType: req.file.mimetype,
+    });
+
+    res.json(publicUser(updatedRows[0]));
+  }),
+);
+
+app.delete('/api/v1/admin/users/:id/photo', authMiddleware, adminOnly, ah(async (req, res) => {
+  const { rows: userRows } = await query(
+    'SELECT id, photo_url FROM users WHERE id = $1',
+    [req.params.id],
+  );
+  const target = userRows[0];
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  const { rows: updatedRows } = await query(
+    'UPDATE users SET photo_url = NULL WHERE id = $1 RETURNING *',
+    [target.id],
+  );
+
+  const previous = photoFilename(target.photo_url);
+  if (previous) {
+    await fs.promises.unlink(path.join(UPLOADS_DIR, previous)).catch(() => {});
+  }
+
+  await logActivity(req.session.email, 'Updated', 'user', target.id, {
+    field: 'photo_url',
+    removed: true,
+  });
+
+  res.json(publicUser(updatedRows[0]));
+}));
+
+// ---- Employee profile pictures ----
+//
+// Same contract as the user picture routes above: the file is validated by
+// magic bytes, written to disk under a name derived from the row id, and the
+// DB stores a root-relative path with a cache-buster.
+
+app.post(
+  '/api/v1/admin/employees/:id/photo',
+  authMiddleware,
+  adminOnly,
+  upload.single('photo'),
+  ah(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+    if (req.file.size > MAX_UPLOAD_BYTES) {
+      return res.status(400).json({
+        error: `Image is too large. Maximum size is ${MAX_UPLOAD_BYTES / 1024} KB.`,
+      });
+    }
+    const ext = ALLOWED_IMAGE_TYPES.get(req.file.mimetype);
+    if (!ext) {
+      return res.status(400).json({ error: 'Unsupported image type. Use JPEG, PNG or WebP.' });
+    }
+    if (!hasExpectedSignature(req.file.buffer, ext)) {
+      return res.status(400).json({ error: 'File is not a valid image' });
+    }
+
+    const { rows: empRows } = await query(
+      'SELECT id, full_name, photo_url FROM employees WHERE id = $1',
+      [req.params.id],
+    );
+    const target = empRows[0];
+    if (!target) return res.status(404).json({ error: 'Employee not found' });
+
+    // The filename is derived from the employee id, never from the client's
+    // filename (path traversal / extension spoofing).
+    const filename = `${target.id}.${ext}`;
+    await fs.promises.writeFile(path.join(UPLOADS_DIR, filename), req.file.buffer);
+
+    // `?v=` busts the browser cache so a replaced picture is fetched fresh
+    // instead of being served from the previous response's cache.
+    const publicPath = `/api/v1/uploads/${filename}?v=${Date.now()}`;
+    const { rows: updatedRows } = await query(
+      'UPDATE employees SET photo_url = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [publicPath, target.id],
+    );
+
+    // A picture with the SAME extension was overwritten in place, so only a
+    // format change leaves an orphan behind. Delete it AFTER the DB write so
+    // a failed update never leaves a dangling photo_url.
+    const previous = photoFilename(target.photo_url);
+    if (previous && previous !== filename) {
+      await fs.promises.unlink(path.join(UPLOADS_DIR, previous)).catch(() => {});
+    }
+
+    await logActivity(req.session.email, 'Updated', 'employee', target.id, {
+      field: 'photo_url',
+      bytes: req.file.size,
+      contentType: req.file.mimetype,
+    });
+
+    const deptIndex = await buildDeptIndex();
+    res.json(employeeToFrontend(updatedRows[0], deptIndex));
+  }),
+);
+
+app.delete('/api/v1/admin/employees/:id/photo', authMiddleware, adminOnly, ah(async (req, res) => {
+  const { rows: empRows } = await query(
+    'SELECT id, photo_url FROM employees WHERE id = $1',
+    [req.params.id],
+  );
+  const target = empRows[0];
+  if (!target) return res.status(404).json({ error: 'Employee not found' });
+
+  const { rows: updatedRows } = await query(
+    'UPDATE employees SET photo_url = NULL, updated_at = NOW() WHERE id = $1 RETURNING *',
+    [target.id],
+  );
+
+  const previous = photoFilename(target.photo_url);
+  if (previous) {
+    await fs.promises.unlink(path.join(UPLOADS_DIR, previous)).catch(() => {});
+  }
+
+  await logActivity(req.session.email, 'Updated', 'employee', target.id, {
+    field: 'photo_url',
+    removed: true,
+  });
+
+  const deptIndex = await buildDeptIndex();
+  res.json(employeeToFrontend(updatedRows[0], deptIndex));
+}));
+
+// Multer errors must be turned into clean 4xx responses, not 500s. Express 4
+// requires error middleware to be registered AFTER the routes it handles.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: `Image is too large. Maximum size is ${MAX_UPLOAD_BYTES / 1024} KB.`,
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ error: 'Unexpected file field' });
+    }
+    return res.status(400).json({ error: `Upload failed: ${err.message}` });
+  }
+  next(err);
+});
 
 app.get('/api/v1/admin/session-settings', authMiddleware, adminOnly, ah(async (_req, res) => {
   const payload = await getSessionSettings();
@@ -974,6 +1286,12 @@ app.use((err, req, res, _next) => {
 
 export async function bootstrap() {
   await initSchema();
+
+  // The uploads directory may not exist yet — a Docker volume created by an
+  // older image has no `uploads` subdirectory. Create it recursively so the
+  // container can write pictures into it.
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  logger.info('uploads.dir_ready', { route: UPLOADS_DIR });
 
   // First-boot seed: create the default admin user if the table is empty.
   //

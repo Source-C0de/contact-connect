@@ -7,12 +7,13 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js",
+    "dev": "node --watch-path=./index.js --watch-path=./auth.js --watch-path=./db.js --watch-path=./env.js --watch-path=./observability.js index.js",
     "migrate": "node migrate-json-to-db.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "multer": "^2.5.0",
     "pg": "^8.13.1"
   }
 }

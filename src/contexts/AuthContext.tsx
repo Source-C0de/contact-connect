@@ -7,6 +7,8 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
+  /** Patch the cached user (e.g. after the admin changes their own picture). */
+  updateUser: (patch: Partial<AuthUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,8 +35,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateUser = useCallback((patch: Partial<AuthUser>) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      // Keep the localStorage mirror in sync so a page refresh does not
+      // resurrect a stale avatar.
+      try {
+        localStorage.setItem('contacthub_user', JSON.stringify(next));
+      } catch { /* storage full / disabled — not fatal */ }
+      return next;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

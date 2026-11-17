@@ -123,6 +123,72 @@ async function http<T>(
   );
 }
 
+/**
+ * Multipart-capable sibling of `http()`.
+ *
+ * The browser MUST set the `Content-Type` header itself — it appends the
+ * multipart boundary — so we deliberately do not set it here. Setting
+ * `multipart/form-data` manually would produce a body without a boundary and
+ * the server would fail to parse it.
+ *
+ * Everything else is identical to `http()`: same base URL, same Bearer token,
+ * same `ApiError` shape, same 401-clears-localStorage behaviour.
+ */
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem(LS_TOKEN_KEY);
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  // NOTE: no Content-Type — the browser adds it with the boundary.
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+  } catch (e) {
+    // Network failure: flip availability and propagate
+    localStorage.setItem(LS_SERVER_OK_KEY, '0');
+    throw makeError(
+      `Network error contacting ${url}: ${(e as Error).message}`,
+    );
+  }
+
+  if (res.ok) {
+    localStorage.setItem(LS_SERVER_OK_KEY, '1');
+    const text = await res.text();
+    if (!text) return undefined as unknown as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as unknown as T;
+    }
+  }
+
+  // Try to parse error body
+  let errBody: unknown = null;
+  const errText = await res.text();
+  try {
+    errBody = errText ? JSON.parse(errText) : null;
+  } catch {
+    errBody = errText;
+  }
+
+  if (res.status === 401) {
+    localStorage.removeItem(LS_TOKEN_KEY);
+    localStorage.removeItem(LS_USER_KEY);
+  }
+
+  throw makeError(
+    (errBody as { error?: string } | null)?.error || `HTTP ${res.status}`,
+    res.status,
+    errBody,
+  );
+}
+
 /* ------------------------------------------------------------------ *
  *  LOCAL FALLBACK (per-browser storage)
  * ------------------------------------------------------------------ */
@@ -513,6 +579,15 @@ export const api = {
   },
   delete<T = unknown>(path: string) {
     return http<T>('DELETE', path);
+  },
+  /**
+   * Multipart upload. There is deliberately no local-fallback counterpart:
+   * a binary picture cannot be mirrored into localStorage, and the local
+   * router has no handler for these routes — it would throw a misleading
+   * 404 in place of the real network error.
+   */
+  upload<T = unknown>(path: string, form: FormData) {
+    return upload<T>(path, form);
   },
 
   /**

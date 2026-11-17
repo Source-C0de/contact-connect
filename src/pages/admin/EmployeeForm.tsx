@@ -9,6 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { AvatarInitials } from '@/components/AvatarInitials';
+import { PhotoUploadDialog } from '@/components/admin/PhotoUploadDialog';
+import { useDepartmentColors } from '@/hooks/useDepartmentColors';
+import { Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface FormData {
@@ -35,6 +38,12 @@ export default function EmployeeForm() {
   });
 
   const [departments, setDepartments] = useState<Department[]>([]);
+  const { getColor } = useDepartmentColors();
+
+  // Profile picture state. A new employee has no id yet, so the picture can
+  // only be set once the employee exists (the file is named after its id).
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>();
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   useEffect(() => {
     departmentService.getAll().then(deps => {
@@ -47,10 +56,25 @@ export default function EmployeeForm() {
             email: emp.email, extension: emp.extension, mobile: emp.mobile,
             location: emp.location, status: emp.status,
           });
+          setPhotoUrl(emp.photoUrl);
         });
       }
     });
   }, [id]);
+
+  const handleUploadPhoto = async (file: File) => {
+    if (!id) return;
+    const updated = await employeeService.uploadEmployeePhoto(id, file);
+    setPhotoUrl(updated.photoUrl);
+    toast.success('Profile picture updated');
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!id) return;
+    const updated = await employeeService.removeEmployeePhoto(id);
+    setPhotoUrl(updated.photoUrl);
+    toast.success('Profile picture removed');
+  };
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
@@ -108,6 +132,9 @@ export default function EmployeeForm() {
     if (errors[field]) setErrors(e => ({ ...e, [field]: '' }));
   };
 
+  // The form holds a department ID; the display name is what the UI shows.
+  const departmentName = departments.find(d => d.id === form.department)?.name || '';
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
@@ -118,10 +145,27 @@ export default function EmployeeForm() {
       <form onSubmit={handleSubmit} className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-sm">
         {/* Avatar preview */}
         <div className="flex items-center gap-4">
-          <AvatarInitials name={form.fullName || 'N A'} department={form.department} size="lg" />
-          <div>
+          <AvatarInitials name={form.fullName || 'N A'} department={form.department} color={getColor(departmentName)} src={photoUrl} size="lg" />
+          <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">{form.fullName || 'New Employee'}</p>
-            <p className="text-xs text-muted-foreground">{form.department || 'No department'}</p>
+            <p className="text-xs text-muted-foreground">{departmentName || 'No department'}</p>
+          </div>
+          <div className="ml-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPhotoOpen(true)}
+              disabled={!isEdit}
+            >
+              <ImageIcon className="mr-2 h-4 w-4" />
+              {photoUrl ? 'Change picture' : 'Picture'}
+            </Button>
+            {!isEdit && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Save the employee first, then add a picture.
+              </p>
+            )}
           </div>
         </div>
 
@@ -180,6 +224,16 @@ export default function EmployeeForm() {
           </Button>
         </div>
       </form>
+
+      {/* Profile picture */}
+      <PhotoUploadDialog
+        open={photoOpen}
+        onOpenChange={setPhotoOpen}
+        personName={form.fullName || 'New Employee'}
+        currentPhotoUrl={photoUrl}
+        onUpload={handleUploadPhoto}
+        onRemove={handleRemovePhoto}
+      />
     </div>
   );
 }

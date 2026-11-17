@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { adminService } from '@/services/adminService';
 import type { SystemUser, UserRole } from '@/data/mockData';
 import { AvatarInitials } from '@/components/AvatarInitials';
+import { PhotoUploadDialog } from '@/components/admin/PhotoUploadDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,12 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
   UserPlus, Eye, KeyRound, UserX, Monitor, Globe, Cpu, Wifi,
-  RefreshCw, Clock, LogOut
+  RefreshCw, Clock, LogOut, ImagePlus
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import type { SessionSettings } from '@/services/adminService';
 
 export default function UserManagement() {
+  const { user: currentUser, updateUser } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,6 +28,7 @@ export default function UserManagement() {
   const [viewingUser, setViewingUser] = useState<SystemUser | null>(null);
   const [passwordUser, setPasswordUser] = useState<SystemUser | null>(null);
   const [showSessionSettings, setShowSessionSettings] = useState(false);
+  const [photoUser, setPhotoUser] = useState<SystemUser | null>(null);
 
   // Invite form
   const [inviteEmail, setInviteEmail] = useState('');
@@ -124,6 +128,27 @@ export default function UserManagement() {
     }
   };
 
+  const handleUploadPhoto = async (file: File) => {
+    if (!photoUser) return;
+    const updated = await adminService.uploadUserPhoto(photoUser.id, file);
+    setUsers(prev => prev.map(u => (u.id === photoUser.id ? { ...u, ...updated } : u)));
+    // Keep the header in sync when the admin changes their OWN picture.
+    if (currentUser?.id === photoUser.id) {
+      updateUser({ avatar: updated.photoUrl });
+    }
+    toast.success('Profile picture updated');
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!photoUser) return;
+    const updated = await adminService.removeUserPhoto(photoUser.id);
+    setUsers(prev => prev.map(u => (u.id === photoUser.id ? { ...u, ...updated } : u)));
+    if (currentUser?.id === photoUser.id) {
+      updateUser({ avatar: undefined });
+    }
+    toast.success('Profile picture removed');
+  };
+
   const handleSaveSessionSettings = async () => {
     setSavingSession(true);
     try {
@@ -201,7 +226,7 @@ export default function UserManagement() {
               <tr key={user.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                 <td className="p-3">
                   <div className="flex items-center gap-3">
-                    <AvatarInitials name={user.name} size="sm" />
+                    <AvatarInitials name={user.name} size="sm" src={user.photoUrl} />
                     <span className="font-medium text-foreground">{user.name}</span>
                   </div>
                 </td>
@@ -241,6 +266,15 @@ export default function UserManagement() {
                 </td>
                 <td className="p-3">
                   <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      title="Set profile picture"
+                      onClick={() => setPhotoUser(user)}
+                    >
+                      <ImagePlus className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -481,6 +515,16 @@ export default function UserManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* === Profile Picture Modal === */}
+      <PhotoUploadDialog
+        open={!!photoUser}
+        onOpenChange={(open) => { if (!open) setPhotoUser(null); }}
+        personName={photoUser?.name || ''}
+        currentPhotoUrl={photoUser?.photoUrl}
+        onUpload={handleUploadPhoto}
+        onRemove={handleRemovePhoto}
+      />
     </div>
   );
 }

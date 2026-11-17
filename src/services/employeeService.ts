@@ -1,4 +1,5 @@
 import { api, type PaginatedResponse } from '@/lib/api';
+import { absoluteApiUrl } from '@/lib/apiBase';
 import type { Employee } from '@/data/mockData';
 import type { Department } from '@/data/mockData';
 
@@ -21,6 +22,8 @@ interface BackendEmployee {
   mobile?: string | null;
   location?: string;
   office_location?: string | null;
+  photoUrl?: string | null;
+  photo_url?: string | null;
   status?: 'active' | 'inactive';
   onlineStatus?: 'online' | 'offline';
   is_active?: boolean;
@@ -57,6 +60,7 @@ function mapEmployee(emp: BackendEmployee): Employee {
     extension: emp.extension || '',
     mobile: emp.mobile || '',
     location: emp.location || emp.office_location || '',
+    photoUrl: absoluteApiUrl(emp.photoUrl ?? emp.photo_url ?? undefined),
     status: active ? 'active' : 'inactive',
     onlineStatus: emp.onlineStatus || (active ? 'online' : 'offline'),
     dateAdded: toIsoDate(emp.dateAdded || emp.createdAt || emp.created_at),
@@ -173,6 +177,26 @@ export const employeeService = {
       if (!isLocalFallbackWorthy(err)) throw err;
       await api.__local.request('DELETE', `/employees/${id}`);
     }
+  },
+
+  /**
+   * Upload (or replace) an employee's profile picture.
+   *
+   * Deliberately has NO local-fallback branch: a binary picture cannot be
+   * mirrored into localStorage, and the local router has no handler for this
+   * route — it would throw a misleading 404 in place of the real network
+   * error.
+   */
+  async uploadEmployeePhoto(employeeId: string, file: File): Promise<Employee> {
+    const form = new FormData();
+    form.append('photo', file, file.name);
+    const emp = await api.upload<BackendEmployee>(`/admin/employees/${employeeId}/photo`, form);
+    return mapEmployee(emp);
+  },
+
+  async removeEmployeePhoto(employeeId: string): Promise<Employee> {
+    const emp = await api.delete<BackendEmployee>(`/admin/employees/${employeeId}/photo`);
+    return mapEmployee(emp);
   },
 
   async bulkDelete(ids: string[]): Promise<void> {

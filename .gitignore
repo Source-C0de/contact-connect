@@ -28,3 +28,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Locally uploaded profile pictures (the dev-mode UPLOADS_DIR).
+server/uploads/

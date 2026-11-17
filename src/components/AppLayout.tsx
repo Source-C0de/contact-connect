@@ -119,7 +119,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <p className="text-sm font-medium text-foreground">{user?.name}</p>
               <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
             </div>
-            <AvatarInitials name={user?.name || 'U'} size="sm" />
+            <AvatarInitials name={user?.name || 'U'} size="sm" src={user?.avatar} />
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"

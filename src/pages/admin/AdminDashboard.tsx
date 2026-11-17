@@ -67,7 +67,7 @@ export default function AdminDashboard() {
           <div className="space-y-3">
             {recentEmployees.map(emp => (
               <div key={emp.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
-                <AvatarInitials name={emp.fullName} department={emp.department} size="sm" />
+                <AvatarInitials name={emp.fullName} department={emp.department} src={emp.photoUrl} size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{emp.fullName}</p>
                   <p className="text-xs text-muted-foreground">{emp.department}</p>
